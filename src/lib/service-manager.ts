@@ -331,6 +331,34 @@ async function auditEvent(
     });
   if (!r.ok) throw Error("SERVICE_AUDIT_EVENT_FAILED");
 }
+/** Pre-service rollback runtimes have no operator receipt API. Never create a
+ * concurrent ledger writer: stop, record the passed acceptance, then restart and
+ * verify the same immutable release. The final job receipt follows health. */
+export async function completeServiceAudit(
+  c: ServiceConfig,
+  event: Record<string, unknown>,
+): Promise<string> {
+  const manifest = await verifyRelease(
+    path.join(c.root, "releases", c.current),
+    c.current,
+  );
+  if (
+    manifest.evidence.operator_bootstrap === true &&
+    !manifest.files.some((file) => file.path === "dist/service-worker.js")
+  ) {
+    await systemctl(["stop", c.unit]);
+    await auditOffline(c, {
+      ...event,
+      outcome: "accepted_before_legacy_restart",
+    });
+    await systemctl(["reset-failed", c.unit], false);
+    await systemctl(["start", c.unit]);
+    await healthy(c, c.current);
+    return "legacy offline handoff; final restart health verified";
+  }
+  await auditEvent(c, event);
+  return "authenticated gateway receipt";
+}
 export async function checkGateway(
   c: ServiceConfig,
   allReads = true,
@@ -877,7 +905,7 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
       });
     }
     await assertProtected(job);
-    await auditEvent(next, {
+    acceptance.completion_audit = await completeServiceAudit(next, {
       operation: job.operation,
       job: id,
       outcome: "success",
@@ -885,8 +913,20 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
       to: job.target,
     });
     if (job.operation === "adopt") await systemctl(["enable", next.unit]);
-    // Keep a verified management CLI available when rolling back a pre-service runtime.
-    await pointCurrent(root, job.target, "operator");
+    // Rolling back a gateway must retain the newer management implementation.
+    if (job.operation !== "rollback")
+      await pointCurrent(root, job.target, "operator");
+    else if (!sync.existsSync(path.join(root, "operator"))) {
+      const beforeManifest = await verifyRelease(
+        path.join(root, "releases", job.before.current),
+      );
+      if (
+        beforeManifest.files.some(
+          (file) => file.path === "dist/service-worker.js",
+        )
+      )
+        await pointCurrent(root, job.before.current, "operator");
+    }
     const status = await serviceStatus(root);
     await record(job, {
       status: "SUCCESS",

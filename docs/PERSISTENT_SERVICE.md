@@ -76,7 +76,10 @@ operator route, avoiding a second audit writer.
 Failed preflight leaves the running gateway untouched. Failure after stopping or
 switching restores the previous pointer/configuration, resets the start-limit
 state, restarts the previous release and verifies health. The ledger is never
-restored or replaced. Inspect the recorded job before retrying an unknown result.
+restored or replaced. A retained pre-service bootstrap runtime has no completion
+audit API: after SDK acceptance the controller stops that writer, appends the
+acceptance receipt offline, restarts it and checks final health. The newer operator
+CLI is retained across gateway rollback. Inspect the recorded job before retrying an unknown result.
 `rollback` repeats harmlessly once the previous release has been selected.
 
 The one-time `service adopt <sha> --transient bridge-dev-portable-SHA.service
@@ -144,3 +147,13 @@ before-context denial that is not configured. Context enforcement is verified in
 the separate managed-session regression suite. Actual ChatGPT acceptance belongs
 to the account operator: reconnect, open a new chat, inspect tools, then call
 `system_context`, `run_command` with `pwd`, `mcp_list` and `skills_validate`.
+
+For an explicit compatibility rehearsal with a retained public pre-service runtime:
+
+```sh
+node scripts/deploy-acceptance/legacy-rollback.mjs --execute-staging \
+  --legacy-release <retained-runtime-directory> --evidence <private-directory>
+```
+
+This creates only its inventoried temporary unit with synthetic credentials,
+checks the actual old runtime and operator-CLI retention, and removes the fixture.

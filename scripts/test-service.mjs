@@ -245,6 +245,53 @@ await manager.controlService("start", root);
 assert.equal(active, true);
 await manager.controlService("stop", root);
 assert.equal(active, false);
+// A pre-service runtime must not receive an unsupported audit API call.
+const manifestFile = path.join(root, "releases", a, "RELEASE_MANIFEST.json"),
+  legacyManifest = JSON.parse(await fs.readFile(manifestFile, "utf8"));
+legacyManifest.evidence = { operator_bootstrap: true };
+await fs.writeFile(manifestFile, JSON.stringify(legacyManifest));
+const { HashAudit, verifyAuditFile } =
+  await import("../dist/lib/hash-audit.js");
+await new HashAudit(c.audit_file).append({ phase: "fixture_baseline" });
+const prefix = await fs.readFile(c.audit_file),
+  auditInode = (await fs.stat(c.audit_file)).ino;
+const originalFetch = globalThis.fetch;
+let posts = 0;
+globalThis.fetch = async (_url, options) => {
+  if (options?.method === "POST") {
+    posts++;
+    throw Error("Old runtime has no service audit endpoint");
+  }
+  return new Response(
+    JSON.stringify({ status: "ok", commit: a, full_machine_access: false }),
+  );
+};
+active = true;
+try {
+  assert.match(
+    await manager.completeServiceAudit(c, {
+      operation: "rollback",
+      job: "fixture",
+      from: b,
+      to: a,
+      outcome: "success",
+    }),
+    /legacy offline/,
+  );
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.equal(posts, 0);
+assert.equal(active, true);
+assert.equal((await fs.stat(c.audit_file)).ino, auditInode);
+assert.ok(
+  (await fs.readFile(c.audit_file)).subarray(0, prefix.length).equals(prefix),
+);
+assert.equal(verifyAuditFile(c.audit_file).entries, 2);
+assert.match(
+  await fs.readFile(c.audit_file, "utf8"),
+  /accepted_before_legacy_restart/,
+);
 await manager.controlService("uninstall", root);
 await manager.controlService("uninstall", root);
 assert.equal(

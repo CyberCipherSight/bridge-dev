@@ -28,6 +28,12 @@ implementation used a separate main checkout.
   directives; the root-ownership check stays intact. See the exact list and
   security guarantees in [the runbook](PERSISTENT_SERVICE.md).
 
+- A real retained-64ca2b6 rollback rehearsal caught an unsupported completion-audit
+  API call and potential downgrade of the management CLI. Legacy rollback now
+  records acceptance only while the ledger writer is stopped, verifies the final
+  restart and retains the newer operator CLI. A pure CI ledger test and real
+  old-runtime user-unit rehearsal cover this compatibility boundary.
+
 ## Verification
 
 The local gates are build, unit suite, policy, portable, CLI, extensions,
