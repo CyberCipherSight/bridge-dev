@@ -209,6 +209,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
   }
 
   async function buildSession(preferredSessionId?: string): Promise<McpSession> {
+    if(Object.keys(sessions).length+Object.keys(pendingRecoveries).length>=128)throw new Error("MCP_SESSION_LIMIT: close an existing connection before initializing another");
     // SessionStart hooks may spawn arbitrary executables before context gate.
     // They are suppressed in policy-gateway mode; explicit Ponytail hooks
     // remain available through a classified, approved MCP tool call.

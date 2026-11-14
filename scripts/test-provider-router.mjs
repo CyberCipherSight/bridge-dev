@@ -29,7 +29,7 @@ try{
  assert.throws(()=>validateToolArguments({name:'test',inputSchema:{type:'object',additionalProperties:false}},{extra:1}),/INVALID_ARGUMENTS/);
  for(const url of ['http://127.0.0.1','https://[::ffff:127.0.0.1]','https://169.254.169.254','https://user:pass@example.com'])await assert.rejects(validateNetworkUrl(url));
  assert.equal(isPublicAddress('127.0.0.1'),false);assert.equal(isPublicAddress('8.8.8.8'),true);
- for(let attempt=0;attempt<60;attempt++){try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
+ for(let attempt=0;attempt<60;attempt++){try{if((await fetch(`http://127.0.0.1:${port}/healthz`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
  manager=new McpUpstreamManager(configPath);await manager.init();
  const http={id:'http',name:'Mock HTTP',enabled:true,transport:'http',url:`http://127.0.0.1:${port}/mcp`,auth:{type:'none'},allow_private_network:true,expose:'allowlist',tools:['add']};
  const stdio={id:'stdio',name:'Mock stdio',enabled:true,transport:'stdio',command:process.execPath,args:[path.resolve('scripts/mock-stdio-mcp.mjs')],env:{PROVIDER_CHILD_FILE:path.join(base,'child.pid')},expose:'allowlist',tools:['echo','environment']};

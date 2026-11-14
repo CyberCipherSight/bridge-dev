@@ -35,12 +35,14 @@ try{
   while(Date.now()-start<18000){
     if(child.exitCode!==null)throw new Error("Server exited "+child.exitCode+"; "+logs);
     try {
-        const response=await fetch("http://127.0.0.1:"+port+"/health",{signal:AbortSignal.timeout(1500)});
+        const response=await fetch("http://127.0.0.1:"+port+"/health",{headers:{Authorization:"Bearer "+token},signal:AbortSignal.timeout(1500)});
       if(response.ok){health=await response.json();break;}
     }catch{}
     await new Promise(resolve=>setTimeout(resolve,175));
   }
   if(!health)throw new Error("Portable server health timeout. "+logs);
+  assert.equal((await fetch("http://127.0.0.1:"+port+"/health")).status,401);
+  assert.deepEqual(await (await fetch("http://127.0.0.1:"+port+"/healthz")).json(),{ok:true});
   assert.equal(health.status,"ok");
   assert.equal(health.runtimeMode,"portable");
   assert.equal(health.platform.runtime,"portable");

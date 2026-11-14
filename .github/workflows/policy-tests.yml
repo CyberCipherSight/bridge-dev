@@ -31,3 +31,8 @@ jobs:
         run: node scripts/isolated-tests.mjs scripts/test-bridge-dev-cli.mjs
       - name: Verify real MCP registration inventory
         run: node scripts/isolated-tests.mjs scripts/sync-tool-counts.mjs
+      - name: Local dashboard browser regression
+        shell: bash
+        run: |
+          export BRIDGEDEV_TEST_BROWSER="$(command -v google-chrome)"
+          pnpm run test:browser

@@ -27,7 +27,7 @@ try {
   assert.ok(mcp&&admin&&workspace,"Trial did not print local-only credentials: "+stderr);
   assert.ok(fs.existsSync(workspace),"Workspace fixture must exist while trial runs");
   const base=mcp.replace(/\/mcp\/[^/]+$/,"");
-  const health=await (await fetch(base+"/health")).json();
+  const health=await (await fetch(base+"/health",{headers:{Authorization:"Bearer "+mcp.split("/").at(-1)}})).json();
   assert.equal(health.runtimeMode,"portable");
   assert.equal(health.fullMachineAccess,false);
   const anonymous=await fetch(base+"/mcp");

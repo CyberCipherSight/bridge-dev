@@ -22,7 +22,7 @@ export async function acceptGateway({url,adminUrl,mcpToken,adminToken,fixtures,i
  }
  const get=(endpoint,headers)=>fetch(endpoint,{headers,signal:AbortSignal.timeout(5000)});
  try{
-  const health=await(await get(new URL('/health',url))).json();assert(health.status==='ok'&&health.fullMachineAccess===false,'ACCEPTANCE_HEALTH_OR_MODE');checks.health_standard=true;
+  const health=await(await get(new URL('/health',url),{Authorization:'Bearer '+mcpToken})).json();assert(health.status==='ok'&&health.fullMachineAccess===false,'ACCEPTANCE_HEALTH_OR_MODE');checks.health_standard=true;
   assert((await get(url)).status===401,'ACCEPTANCE_UNAUTHENTICATED_MCP');checks.mcp_authentication=true;
   const first=await connect();tools=(await first.listTools()).tools;checks.initialize=true;
   assert(tools.length===inventory.length&&inventory.every(name=>tools.some(t=>t.name===name)),'ACCEPTANCE_TOOL_INVENTORY');checks.tool_discovery=true;

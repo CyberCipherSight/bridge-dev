@@ -1,233 +1,99 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BridgeDev Admin</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-mark">◆</span>
-        <div>
-          <div class="brand-title">BridgeDev</div>
-          <div class="brand-sub">Admin · localhost</div>
-        </div>
-      </div>
-      <nav class="nav">
-        <button class="nav-item active" data-tab="dashboard">Overview</button>
-        <button class="nav-item" data-tab="extensions">Extensions</button>
-        <button class="nav-item" data-tab="servers">MCP Servers</button>
-        <button class="nav-item" data-tab="import">Import</button>
-        <button class="nav-item" data-tab="activity">Activity Log</button>
-        <button class="nav-item" data-tab="project">Project Memory</button>
-        <button class="nav-item" data-tab="settings">Settings</button>
-        <button class="nav-item" data-tab="logs">Raw Status</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>BridgeDev operations</title>
+    <link rel="icon" href="favicon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to content</a>
+    <header>
+      <strong>BridgeDev</strong><span class="muted">operations</span
+      ><button id="theme" type="button">Theme: system</button
+      ><button id="help" type="button" aria-keyshortcuts="?">Help</button>
+    </header>
+    <div class="layout">
+      <nav aria-label="Sections">
+        <button data-tab="overview" aria-current="page">Overview</button
+        ><button data-tab="extensions">Extensions</button
+        ><button data-tab="skills">Skills</button
+        ><button data-tab="instructions">Instructions</button
+        ><button data-tab="packs">Packs</button
+        ><button data-tab="approvals">Approvals</button
+        ><button data-tab="audit">Audit</button
+        ><button data-tab="connection">Connection</button
+        ><button data-tab="settings">Settings</button>
       </nav>
-      <div class="sidebar-foot">
-        <div id="conn-status" class="conn-dot">Connecting…</div>
-      </div>
-    </aside>
-
-    <main class="content">
-      <header class="topbar">
-        <h1 id="page-title">Overview</h1>
-        <div class="topbar-actions">
-          <input id="admin-credential" type="password" autocomplete="off" placeholder="Independent admin token" aria-label="Admin token" />
-          <button type="button" class="btn ghost" id="refresh-all">Refresh</button>
+      <main id="content" tabindex="-1">
+        <div class="toolbar">
+          <h1 id="title">Overview</h1>
+          <button id="refresh">Refresh</button>
         </div>
-      </header>
-
-      <section id="dashboard" class="view active">
-        <div id="chatgpt-connection-card" class="connection-hero-card">
-          <div class="hero-header">
-            <div class="hero-title-group">
-              <span class="pulse-indicator"></span>
-              <span class="hero-badge">ChatGPT Web Integration</span>
-            </div>
-            <span class="status-pill active" id="gateway-status-pill">Gateway Online</span>
-          </div>
-          <p class="hero-description">Add this URL to ChatGPT Web (<strong>Custom MCP Server &rarr; Connection</strong>) to connect directly to your development environment.</p>
-          <div class="connection-box">
-            <span class="connection-label">Connection URL:</span>
-            <input type="text" readonly id="chatgpt-url-input" class="connection-url-field" value="Loading connection URL..." />
-            <button type="button" class="btn copy-btn" id="copy-chatgpt-url">Copy URL</button>
-          </div>
-          <div class="hero-meta-tags">
-            <span class="meta-tag">Auth: None (URL token)</span>
-            <span class="meta-tag">Endpoint: /mcp</span>
-            <span class="meta-tag">Profile: Slim (52 Native Tools)</span>
-            <span class="meta-tag">Workspace: Scoped Read &amp; Write</span>
-          </div>
+        <form id="login">
+          <label for="admin-credential">Admin credential</label
+          ><input
+            id="admin-credential"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            required
+            aria-describedby="credential-note"
+          /><button>Connect</button
+          ><button id="disconnect" type="button">Disconnect</button
+          ><small id="credential-note"
+            >Local page memory only. Cleared on disconnect or reload.</small
+          >
+        </form>
+        <p id="notice" role="status" aria-live="polite">
+          Enter the independent admin credential.
+        </p>
+        <div class="toolbar">
+          <label for="filter">Filter this section</label
+          ><input
+            id="filter"
+            type="search"
+            autocomplete="off"
+            aria-keyshortcuts="/"
+          />
         </div>
-
-        <div class="section-title"><h3>Environment Metrics</h3></div>
-        <div class="stat-grid" id="stat-grid"></div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Active Upstream Servers</h2>
-            <span class="panel-badge" id="upstream-count-badge">0 configured</span>
-          </div>
-          <div id="dash-servers" class="table-wrap"></div>
-        </div>
-      </section>
-
-      <section id="extensions" class="view">
-        <div class="panel">
-          <h2>Extensions</h2>
-          <p>Review sources and permissions before applying. Provider metadata and imported text are untrusted.</p>
-          <input id="extension-source" type="text" placeholder="GitHub URL, HTTPS file, npm:package or local path" aria-label="Extension source" />
-          <select id="extension-scope" aria-label="Extension scope"><option value="project">Project</option><option value="user">User</option></select>
-          <button id="extension-discover" class="btn">Discover</button>
-          <div id="extension-candidates"></div>
-          <button id="extension-select" class="btn" hidden>Preview selected components</button>
-          <pre id="extension-preview"></pre>
-          <button id="extension-approve" class="btn" hidden>Approve this exact proposal</button>
-          <p id="extension-result" role="status"></p>
-          <h3>Installed content and provider state</h3><div id="extension-installed"></div>
-          <h3>Requests from MCP clients</h3><div id="extension-requests"></div>
-        </div>
-      </section>
-      <section id="servers" class="view">
-        <div class="panel">
-          <div class="panel-head">
-            <h2>MCP Servers</h2>
-            <button type="button" class="btn primary" id="add-server">+ Add Server</button>
-          </div>
-          <div id="servers-table" class="table-wrap"></div>
-        </div>
-      </section>
-
-      <section id="import" class="view">
-        <div class="panel">
-          <div class="panel-head"><h2>Import from IDE / CLI</h2></div>
-          <p class="muted">Scan and import local MCP configurations. Merges without overwriting existing servers.</p>
-          <div id="import-grid" class="import-grid"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Import Custom Config File</h2></div>
-          <div class="inline-form">
-            <input type="text" id="import-file-path" placeholder="/path/to/mcp.json" />
-            <select id="import-file-source">
-              <option value="cursor">Cursor / mcpServers</option>
-              <option value="claude">Claude Code / Desktop</option>
-              <option value="opencode">OpenCode</option>
-            </select>
-            <button type="button" class="btn primary" id="import-file-btn">Import</button>
-          </div>
-        </div>
-      </section>
-
-      <section id="activity" class="view">
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Tool Calls · MCP Client</h2>
-            <div class="activity-toolbar">
-              <select id="activity-kind" aria-label="Filter kind">
-                <option value="all">All</option>
-                <option value="mcp">Client MCP</option>
-                <option value="tool">Tool Execution</option>
-                <option value="session">Session</option>
-              </select>
-              <select id="activity-status" aria-label="Filter status">
-                <option value="all">All Statuses</option>
-                <option value="error">Errors Only</option>
-              </select>
-              <input type="search" id="activity-search" placeholder="Search tool, path…" />
-              <label class="activity-live">
-                <input type="checkbox" id="activity-live" checked />
-                <span>Live</span>
-              </label>
-              <button type="button" class="btn ghost sm" id="activity-clear">Clear Display</button>
-            </div>
-          </div>
-          <div id="activity-feed" class="activity-feed">
-            <div class="empty">No log entries yet. Tool calls from your MCP client will stream here.</div>
-          </div>
-        </div>
-      </section>
-
-      <section id="project" class="view">
-        <div class="panel">
-          <div class="panel-head"><h2>MCP Instructions (Context)</h2></div>
-          <p class="muted">Context injected into each MCP session: CLAUDE.md / AGENTS.md, git status, and agent prompt.</p>
-          <div id="project-meta" class="stat-grid"></div>
-          <pre id="project-preview" class="code-block" style="max-height:420px;overflow:auto"></pre>
-        </div>
-      </section>
-
-      <section id="settings" class="view">
-        <div class="panel">
-          <div class="panel-head"><h2>Environment (.env)</h2></div>
-          <form id="env-form" class="env-grid"></form>
-          <div class="form-actions">
-            <button type="button" class="btn primary" id="save-env">Save .env</button>
-            <span class="muted">Some values require a service restart.</span>
-          </div>
-        </div>
-      </section>
-
-      <section id="logs" class="view">
-        <div class="panel">
-          <pre id="status-json" class="code-block"></pre>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div id="toast" class="toast" hidden></div>
-
-  <dialog id="server-dialog" class="modal">
-    <form method="dialog" id="server-form" class="modal-body">
-      <div class="modal-head">
-        <h3 id="dialog-title">MCP Server</h3>
-        <button type="button" class="btn icon" id="close-dialog" aria-label="Close">×</button>
-      </div>
-      <div class="form-grid">
-        <label class="field"><span>ID</span><input name="id" required /></label>
-        <label class="field"><span>Display Name</span><input name="name" /></label>
-        <label class="field checkbox"><input name="enabled" type="checkbox" checked /><span>Enable Server</span></label>
-        <label class="field"><span>Transport</span>
-          <select name="transport"><option value="stdio">stdio</option><option value="http">http</option></select>
-        </label>
-        <label class="field stdio-field"><span>Command</span><input name="command" /></label>
-        <label class="field stdio-field span-2"><span>Args (JSON array)</span><input name="args" placeholder='["path/to/server.js"]' /></label>
-        <label class="field stdio-field span-2"><span>Working directory</span><input name="cwd" /></label>
-        <label class="field http-field span-2"><span>URL</span><input name="url" placeholder="http://127.0.0.1:3100/mcp" /></label>
-        <label class="field http-field"><span>Auth</span>
-          <select name="auth_type"><option value="auto">auto (OAuth discovery)</option><option value="oauth">oauth</option><option value="none">none/static</option></select>
-        </label>
-        <label class="field http-field"><span>OAuth scope (optional)</span><input name="oauth_scope" /></label>
-        <label class="field http-field"><span>Bearer token env</span><input name="bearer_token_env_var" placeholder="MY_MCP_TOKEN" /></label>
-        <label class="field http-field span-2"><span>Headers (JSON)</span><input name="headers" placeholder='{"X-API-Key":"..."}' /></label>
-        <label class="field"><span>Tool prefix</span><input name="tool_prefix" /></label>
-        <label class="field"><span>Expose</span><select name="expose"><option value="all">all</option><option value="allowlist">allowlist</option><option value="meta_only">meta_only</option><option value="none">none</option></select></label>
-        <label class="field span-2"><span>Allowlist (comma-separated)</span><input name="tools" placeholder="tool_a, tool_b" /></label>
-        <label class="field"><span>Idle timeout (s)</span><input name="idle_timeout_sec" type="number" value="600" /></label>
-      </div>
-      <menu class="modal-foot">
-        <button type="button" class="btn ghost" value="cancel">Cancel</button>
-        <button type="submit" class="btn primary" id="save-server">Save</button>
-      </menu>
-    </form>
-  </dialog>
-
-  <dialog id="computer-use-dialog" class="modal"><div class="modal-body"><div class="modal-head"><h3>Computer Use</h3><button type="button" class="btn icon" id="close-computer-use" aria-label="Close">×</button></div><p>Skill port: enabling exposes skill <code>computer-use</code>. The agent must load this skill before using <code>node_repl</code>.</p><label class="field checkbox"><input id="computer-use-enabled" type="checkbox" /><span>Enable Computer Use</span></label><menu class="modal-foot"><button type="button" class="btn primary" id="save-computer-use">Save</button></menu></div></dialog>
-
-  <dialog id="codex-hooks-dialog" class="modal"><div class="modal-body"><div class="modal-head"><h3>Hooks</h3><button type="button" class="btn icon" id="close-codex-hooks" aria-label="Close">×</button></div><p class="muted">Detected client hooks. SessionStart hook executes in MCP sessions.</p><div id="codex-hooks-list" class="tools-list"></div><menu class="modal-foot"><button type="button" class="btn primary" id="save-codex-hooks">Save</button></menu></div></dialog>
-
-  <dialog id="local-tools-dialog" class="modal"><div class="modal-body"><div class="modal-head"><h3>Local Tools</h3><button type="button" class="btn icon" id="close-local-tools" aria-label="Close">×</button></div><p class="muted">Enable additional tools outside profile <code>slim</code>, or toggle native tools.</p><div id="local-tools-list" class="tools-list"></div><menu class="modal-foot"><button type="button" class="btn primary" id="save-local-tools">Save</button></menu></div></dialog>
-
-  <dialog id="tools-dialog" class="modal">
-    <div class="modal-body">
-      <div class="modal-head"><h3>Tools</h3><button type="button" class="btn icon" id="close-tools">×</button></div>
-      <div id="tools-list" class="tools-list"></div>
+        <section id="screen" aria-labelledby="title"></section>
+      </main>
     </div>
-  </dialog>
-
-  <script src="app.js"></script>
-</body>
+    <dialog id="detail" aria-labelledby="detail-title">
+      <form method="dialog" class="toolbar">
+        <h2 id="detail-title">Details</h2>
+        <button aria-label="Close details">Close</button>
+      </form>
+      <div id="detail-body"></div>
+    </dialog>
+    <dialog id="help-dialog" aria-labelledby="help-title">
+      <h2 id="help-title">Keyboard shortcuts</h2>
+      <dl>
+        <dt>g then o</dt>
+        <dd>Overview</dd>
+        <dt>g then e</dt>
+        <dd>Extensions</dd>
+        <dt>g then s</dt>
+        <dd>Skills</dd>
+        <dt>g then a</dt>
+        <dd>Approvals</dd>
+        <dt>/</dt>
+        <dd>Filter current section</dd>
+        <dt>?</dt>
+        <dd>This help</dd>
+        <dt>Escape</dt>
+        <dd>Close dialog</dd>
+      </dl>
+      <p>
+        Refresh is manual. No background polling. Theme preference lasts only
+        for this page.
+      </p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+  </body>
 </html>

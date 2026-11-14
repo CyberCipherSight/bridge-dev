@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import {readPortableMode} from "./lib/portable-mode.js";
 
 /**
  * BridgeDev CLI — Self-hosted MCP Development Gateway
  */
 
 import "dotenv/config";
+import {serviceCli} from "./lib/service-cli.js";
+import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
 import {extensionCli,operatorApi} from "./lib/extension-cli.js";
 import {controllerCli} from "./lib/controller-cli.js";
@@ -77,7 +80,7 @@ interface HealthResponse {
 
 function fetchHealth(port = 3000): Promise<HealthResponse | null> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 1500 }, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 1500,headers:{Authorization:"Bearer "+(process.env.MCP_TOKEN||"")} }, (res) => {
       if (res.statusCode !== 200) return resolve(null);
       let data = "";
       res.on("data", (chunk) => (data += chunk));
@@ -98,7 +101,7 @@ function fetchHealth(port = 3000): Promise<HealthResponse | null> {
 }
 
 function getActiveMode(): { mode: string; detail: string } {
-  if(getRuntimeMode()==="portable"){try{const mode=JSON.parse(fs.readFileSync(path.join(portableStateDir(),"mode.json"),"utf8"));if(mode.mode==="strict")return {mode:"STRICT",detail:"portable; stdio providers refused"};}catch{}return {mode:"STANDARD",detail:"portable scoped policy; OS account permissions apply"};}
+  if(getRuntimeMode()==="portable"){if(readPortableMode()==="strict")return {mode:"STRICT",detail:"portable; stdio providers refused"};return {mode:"STANDARD",detail:"portable scoped policy; OS account permissions apply"};}
   const libDir = getActivePath("lib");
   const etcDir = getActivePath("etc");
   return inspectLocalMode({
@@ -129,6 +132,7 @@ function getMappedProjects(): string[] {
 }
 
 async function cmdStatus() {
+  const service=await userServiceStatus();
   const unit = getServiceUnit();
   const health = await fetchHealth(Number(process.env.PORT || 3000));
   const modeInfo = getActiveMode();
@@ -153,11 +157,12 @@ async function cmdStatus() {
 
   console.log(`BridgeDev v${VERSION}`);
   console.log(`Runtime   : ${health?.runtimeMode || (unit ? "managed system service" : getRuntimeMode())} on ${process.platform}`);
-  console.log(`Service   : ${unit ? serviceStatus + ` (PID: ${pid}, systemd: ${unit})` : health ? "foreground server reachable" : "not detected"}`);
+  console.log(`Service   : ${service.installed ? service.unit+" "+service.state+" (PID: "+service.pid+")" : unit ? serviceStatus + ` (PID: ${pid}, systemd: ${unit})` : health ? "foreground server reachable" : "not detected"}`);
   console.log(`Status    : ${health ? "connected" : "offline"}${health ? ` (Profile: ${profile}, Active Sessions: ${sessions})` : ""}`);
   console.log(`Mode      : ${modeInfo.mode} (${modeInfo.detail})`);
   console.log(`Project   : ${workspace} (${projects.length} mapped project${projects.length === 1 ? "" : "s"})`);
   console.log(`Endpoint  : ${endpointStr}`);
+  if(service.installed)console.log("Boot      : enabled="+service.enabled+", linger="+service.linger_status+", commit="+service.current+", rollback="+(service.previous||"none"));
   console.log("Next step : Run 'bridge-dev help' for commands or 'bridge-dev doctor' for diagnostics.");
 }
 
@@ -342,6 +347,7 @@ function cmdProject(args: string[]) {
 }
 
 async function cmdStop() {
+  if(getRuntimeMode()==="portable"&&(await readServiceConfig())){await serviceCli(["service","stop"]);return;}
   if (getRuntimeMode() === "portable") {await operatorApi("/api/lifecycle/stop",{});console.log("Foreground gateway stopping");return;}
   if (process.platform !== "linux") {
     console.error("Service stop is Linux systemd-only. Stop a foreground server with Ctrl-C.");
@@ -364,6 +370,7 @@ async function cmdStop() {
 }
 
 async function cmdRestart() {
+  if(getRuntimeMode()==="portable"&&(await readServiceConfig())){await serviceCli(["service","restart"]);return;}
   if (getRuntimeMode() === "portable") {
     await cmdStop();
     await new Promise(resolve=>setTimeout(resolve,500));
@@ -403,11 +410,14 @@ async function cmdRestart() {
 
 async function cmdDoctor() {
   console.log("BridgeDev doctor");
+  const service=await userServiceStatus();
   const checks: Array<{label:string;status:"OK"|"UNVERIFIED"|"INFO";detail:string}> = [];
   const add = (label:string,status:"OK"|"UNVERIFIED"|"INFO",detail:string) => checks.push({label,status,detail});
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0]||"0",10);
   add("Node runtime",nodeMajor>=20?"OK":"UNVERIFIED",process.version);
   if(getRuntimeMode()==="portable"){
+    add("Persistent service",service.installed&&service.active?"OK":"INFO",service.installed?service.unit+" "+service.state:"not installed; foreground runtime");
+    if(service.installed){add("Boot activation",service.enabled&&service.linger?"OK":"UNVERIFIED","enabled="+service.enabled+", linger="+service.linger_status);add("Release pointer",service.pointer_consistent?"OK":"UNVERIFIED",service.current);add("Rollback","INFO",service.rollback_available?service.previous:"no previous release");add("Service hardening",service.hardening?.NoNewPrivileges==="yes"?"OK":"UNVERIFIED",JSON.stringify(service.hardening));}
     const health=await fetchHealth(Number(process.env.PORT||3000));
     add("MCP endpoint",health?"OK":"UNVERIFIED",health?"authenticated MCP gateway reachable":"configured gateway port is unavailable");
     const admin=await new Promise<number>((resolve)=>{
@@ -514,6 +524,7 @@ function cmdLogin(args: string[] = []) {
 }
 
 function cmdHelp() {
+  console.log("Persistent Linux service: bridge-dev service install|uninstall|status|start|stop|restart|enable|disable|logs|update <sha-or-tag>|rollback");
   console.log(`BridgeDev v${VERSION} — Self-hosted MCP Development Gateway`);
   console.log("Usage: bridge-dev [command] [options]\n");
   console.log("Commands:");
@@ -553,6 +564,7 @@ function cmdHelp() {
 async function main() {
   const rawArgs = process.argv.slice(2);
   const {args,json,verbose}=parseCliArguments(rawArgs);
+  if(await serviceCli(args,json))return;
   if(await extensionCli(args,json,verbose))return;
   if(await controllerCli(args,json))return;
   if(json){const log=console.log,lines:string[]=[];console.log=(...values:unknown[])=>{lines.push(values.map(String).join(" "));};process.once("beforeExit",()=>{console.log=log;log(JSON.stringify({ok:!process.exitCode,command:args[0]||"status",output:lines}));});}
@@ -593,6 +605,7 @@ async function main() {
       cmdLogin(args.slice(1));
       break;
     case "start":
+      if((await userServiceStatus()).installed){await serviceCli(["service","start"]);break;}
     case "serve":
     case "start-server": {
       const port = process.env.PORT || "3000";

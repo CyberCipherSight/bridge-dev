@@ -17,7 +17,7 @@ export async function acceptPortableGateway({url,adminUrl,mcpToken,adminToken,wo
   else assert.ok(r.isError||!tool.outputSchema,'Missing structured result: '+name);return r;
  }
  try{
-  const health=await(await get(new URL('/health',url))).json();assert.equal(health.runtimeMode,'portable');assert.equal(health.fullMachineAccess,false);assert.equal(health.workspace,workspace);checks.health_standard=true;
+  const health=await(await get(new URL('/health',url),{Authorization:'Bearer '+mcpToken})).json();assert.equal(health.runtimeMode,'portable');assert.equal(health.fullMachineAccess,false);assert.equal(health.workspace,workspace);checks.health_standard=true;
   assert.equal((await get(url)).status,401);checks.mcp_authentication=true;
   const first=await connect();tools=(await first.listTools()).tools;assert.equal(tools.length,inventory.length);assert.ok(inventory.every(name=>tools.some(t=>t.name===name)));checks.initialize_and_inventory=true;
   const context=await call(first,'system_context',{docs:['agents','current_state']});assert.ok(context.structuredContent?.ok);checks.system_context=true;

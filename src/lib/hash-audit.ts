@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import {StringDecoder} from "node:string_decoder";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -39,21 +40,21 @@ export function verifyAuditFile(filename: string): ChainVerification {
   }
   if (!stat.isFile() || stat.isSymbolicLink())
     throw new Error("POLICYGATE_AUDIT_UNSAFE_PATH: ledger must be a regular file, not a symlink");
-  const bytes=fs.readFileSync(filename);
-  if(bytes.length && bytes[bytes.length-1]!==10)throw new Error("POLICYGATE_AUDIT_TRUNCATED: ledger must end in newline");
-  const lines=bytes.toString("utf8").split("\n");
-  let last=ZERO_HASH,count=0;
-  for(const line of lines){
-    if(!line)continue;
+  let last=ZERO_HASH,count=0,bytes=0,pending="";
+  const decoder=new StringDecoder('utf8'),buffer=Buffer.alloc(65536),fd=fs.openSync(filename,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+  const verify=(line:string)=>{
+    if(!line)return;
     let record:Record<string,unknown>;
     try{record=JSON.parse(line);}catch{throw new Error("POLICYGATE_AUDIT_MALFORMED at entry "+(count+1));}
+    if(record.v!==1)throw new Error("POLICYGATE_AUDIT_UNSUPPORTED_VERSION at entry "+(count+1));
     if(record.prev_hash!==last)throw new Error("POLICYGATE_AUDIT_CHAIN_BROKEN at entry "+(count+1));
     const {hash,...body}=record;
-    if(typeof hash!=="string" || !/^[a-f0-9]{64}$/.test(hash) || digest(body)!==hash)
-      throw new Error("POLICYGATE_AUDIT_HASH_MISMATCH at entry "+(count+1));
+    if(typeof hash!=="string"||!/^[a-f0-9]{64}$/.test(hash)||digest(body)!==hash)throw new Error("POLICYGATE_AUDIT_HASH_MISMATCH at entry "+(count+1));
     last=hash;count++;
-  }
-  return {entries:count,last_hash:last,bytes:bytes.length};
+  };
+  try{let size:number;while((size=fs.readSync(fd,buffer,0,buffer.length,null))>0){bytes+=size;pending+=decoder.write(buffer.subarray(0,size));let newline:number;while((newline=pending.indexOf('\n'))>=0){verify(pending.slice(0,newline));pending=pending.slice(newline+1);}if(pending.length>8*1048576)throw Error('POLICYGATE_AUDIT_ENTRY_SIZE_LIMIT');}pending+=decoder.end();if(pending)throw new Error("POLICYGATE_AUDIT_TRUNCATED: ledger must end in newline");}
+  finally{fs.closeSync(fd);}
+  return {entries:count,last_hash:last,bytes};
 }
 export class HashAudit {
   readonly filename:string;
@@ -63,6 +64,8 @@ export class HashAudit {
   private inode: number | null = null;
   private queue:Promise<void>=Promise.resolve();
   private broken=false;
+  private pending=0;
+  async flush():Promise<void>{await this.queue;if(this.broken)throw new Error("POLICYGATE_AUDIT_LOCKED");}
   constructor(filename:string){
     this.filename=path.resolve(filename);
     const verified=verifyAuditFile(this.filename);
@@ -75,6 +78,8 @@ export class HashAudit {
     }
   }
   append(event:Record<string,unknown>):Promise<void> {
+    if(this.pending>=1024)return Promise.reject(new Error("POLICYGATE_AUDIT_QUEUE_FULL: action refused"));
+    this.pending++;
     const operation = async()=>{
       if(this.broken)throw new Error("POLICYGATE_AUDIT_LOCKED: previous append or verification failed");
       try {
@@ -108,7 +113,7 @@ export class HashAudit {
       }catch(error){this.broken=true;throw new Error("POLICYGATE_AUDIT_WRITE_FAILED: action refused; "+String(error));}
     };
     const task=this.queue.then(operation);
-    this.queue=task.catch(()=>{});
+    this.queue=task.finally(()=>{this.pending--;}).catch(()=>{});
     return task;
   }
 }

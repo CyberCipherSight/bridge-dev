@@ -21,7 +21,7 @@ async function approved(name,args){
 }
 try{
  child=spawn(process.execPath,['dist/cli.js','serve'],{env,stdio:['ignore','pipe','pipe']});child.stdout.on('data',b=>logs+=b);child.stderr.on('data',b=>logs+=b);
- let ready=false;for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs);try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,50));}assert.ok(ready);
+ let ready=false;for(let i=0;i<150;i++){if(child.exitCode!==null)throw Error(logs);try{if((await fetch(`http://127.0.0.1:${port}/healthz`)).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,50));}assert.ok(ready);
  client=new Client({name:'independent-qa-diagnostics',version:'1'},{capabilities:{}});transport=new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`),{requestInit:{headers:{Authorization:'Bearer '+token}}});await client.connect(transport);await client.listTools();await fs.rm(path.join(root,"shadow-executed"),{force:true});
  for(const command of ['git --version','node --version','id -u','echo bridge-dev-qa']){const r=await client.callTool({name:'run_command',arguments:{command}});if(!r.structuredContent?.ok)failures.push({command,error:JSON.stringify(r)});}
  await assert.rejects(fs.stat(path.join(root,'shadow-executed')), {code:'ENOENT'});

@@ -15,13 +15,15 @@ export function extensionRouter(manager:McpUpstreamManager):Router{
  router.post("/api/mode",run(async req=>{
   if(getRuntimeMode()!=="portable")throw new Error("Managed modes require the independent signed operator CLI");
   const {mode}=z.object({mode:z.enum(["strict","standard"])}).strict().parse(req.body);
-  await getPolicyGate().audit.append({phase:"operator_portable_mode",mode});await atomicJson(path.join(portableStateDir(),"mode.json"),{mode});await manager.shutdown();await manager.refreshAllProxies();return {mode};
+  await getPolicyGate().audit.append({phase:"operator_portable_mode",mode});await atomicJson(path.join(portableStateDir(),"mode.json"),{version:1,mode});await manager.shutdown();await manager.refreshAllProxies();return {mode};
  }));
+ router.get("/api/extensions/validate",run(async()=>({results:await store.validate()})));
  router.get("/api/extensions",run(async()=>({entries:await store.list(),requests:await store.requests(),providers:manager.listStatusesCached(),configuration:manager.configuration,registry_error:manager.initializationError})));
  router.post("/api/extensions/discover",run(async req=>{const body=z.object({source:z.string().min(1).max(2048),selection:z.array(z.string()).max(64).optional(),scope}).strict().parse(req.body);return store.propose(body.source,body.selection,body.scope);}));
  router.get("/api/extensions/proposal/:id",run(req=>store.proposal(req.params.id)));
  router.post("/api/extensions/review",run(req=>store.reviewRequest(z.object({id:z.string().regex(/^[a-f0-9]{64}$/)}).parse(req.body).id)));
  router.post("/api/extensions/action",run(req=>{const body=z.object({action:z.enum(["remove","update","enable","disable"]),key:z.string().min(1).max(128),scope}).strict().parse(req.body);return store.proposeAction(body.action,body.key,body.scope);}));
+ router.post("/api/extensions/provider-remove",run(req=>store.proposeProviderRemoval(z.object({name:z.string().min(1).max(128)}).strict().parse(req.body).name)));
  router.post("/api/extensions/provider-review",run(req=>{const body=z.object({name:z.string(),enabled:z.boolean(),tools:z.array(z.string().max(256)).max(256).default([]),permission:z.enum(["R","W","X"]).default("X"),allow_private_network:z.boolean().default(false)}).strict().parse(req.body);return store.proposeProvider(body.name,{enabled:body.enabled,expose:"allowlist",tools:body.tools,tool_permissions:Object.fromEntries(body.tools.map(name=>[name,body.permission])),allow_private_network:body.allow_private_network});}));
  router.post("/api/extensions/provider-test",run(async req=>{const {name}=z.object({name:z.string()}).strict().parse(req.body),config=manager.getServerConfig(name);if(!config)throw new Error("PROVIDER_NOT_FOUND");await getPolicyGate().audit.append({phase:"operator_provider_test",provider:name,fingerprint:sha256(JSON.stringify(config))});return manager.testProvider(name);}));
  router.get("/api/extensions/provider-logs",run(async req=>manager.providerLogs(String(req.query.name||""))));

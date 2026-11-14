@@ -115,7 +115,7 @@ try {
     if(stopRequested)break;
     try {
       const response=await fetch("http://127.0.0.1:"+port+"/health",{
-        signal:AbortSignal.timeout(800),
+        headers:{Authorization:"Bearer "+mcpToken},signal:AbortSignal.timeout(800),
       });
       if(response.ok){
         const data=await response.json();
@@ -135,7 +135,7 @@ try {
   console.log("Workspace     : "+workspace);
   console.log("MCP endpoint  : http://127.0.0.1:"+port+"/mcp/<MCP_TOKEN>");
   console.log("Admin UI      : http://127.0.0.1:"+adminPort+"/ui/");
-  console.log("Health        : http://127.0.0.1:"+port+"/health");
+  console.log("Health        : http://127.0.0.1:"+port+"/healthz");
   if(flags.has("--show-secrets")){
     console.log("Private MCP URL   : http://127.0.0.1:"+port+"/mcp/"+mcpToken);
     console.log("Private admin token: "+adminToken);

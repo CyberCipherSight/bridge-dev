@@ -112,6 +112,13 @@ export class ExtensionStore {
   if(proposal.workspace!==await fs.realpath(this.workspace))throw new Error("PROPOSAL_WORKSPACE_CHANGED: review the proposal in its original workspace");
   return proposal;
  }
+ async reject(id:string):Promise<void>{
+  await this.proposal(id);
+  await withFileLock(path.join(this.root,"transaction"),async()=>{
+   await this.proposal(id);
+   await fs.rename(path.join(this.root,"proposals",id+".json"),path.join(this.root,"proposals",id+".rejected.json"));
+  });
+ }
  /** Operator boundary: only CLI/admin call this; MCP exposes proposals only. */
  async apply(id:string):Promise<ExtensionLock>{
   const proposal=await this.proposal(id);

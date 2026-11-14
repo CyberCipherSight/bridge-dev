@@ -93,3 +93,5 @@ Full System displays `Enable Full System (sudo)? [Y/n]`. Press Enter or `y` to a
 Tailscale is optional: `bridge-dev start --funnel` explicitly enables exposure; stop/restart preserve existing routes.
 
 [Stabilization QA and privilege acceptance limits](docs/FINAL_QA.md).
+
+Linux users can install an opt-in [persistent user service](docs/PERSISTENT_SERVICE.md) with `bridge-dev service install`. The [local operations interface](docs/DASHBOARD.md) remains separate from the public MCP endpoint.

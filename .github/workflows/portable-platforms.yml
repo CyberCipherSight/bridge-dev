@@ -65,3 +65,28 @@ jobs:
           test -f "$root/config/.env"
           test -x "$root/bin/bridge-dev"
           "$root/bin/bridge-dev" help >/dev/null
+
+  service-artifact:
+    name: Verified portable service artifact
+    needs: [portable, sources]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm run build
+      - run: pnpm prune --prod --ignore-scripts
+      - run: node scripts/build-service-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-dev-node-${{ github.sha }}
+          path: release-artifact/bridge-dev.release.json.gz
+          if-no-files-found: error
+          retention-days: 30

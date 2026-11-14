@@ -20,7 +20,7 @@ export interface ActivityEntry {
   details?: Record<string, unknown>;
 }
 
-const MAX_ENTRIES = parseInt(process.env.ACTIVITY_LOG_MAX || "500", 10);
+const MAX_ENTRIES = Math.min(2000,Math.max(100,parseInt(process.env.ACTIVITY_LOG_MAX || "500",10)||500));
 const entries: ActivityEntry[] = [];
 const listeners = new Set<(entry: ActivityEntry) => void>();
 
@@ -56,6 +56,7 @@ export function appendActivity(partial: Omit<ActivityEntry, "id" | "time"> & { t
     ...(redactAudit(partial) as typeof partial),
   };
 
+  if(JSON.stringify(entry.details||{}).length>65536)entry.details={truncated:true,note:"Activity detail exceeds 64 KiB; use the tool result or durable audit record"};
   entries.push(entry);
   while (entries.length > MAX_ENTRIES) entries.shift();
 
@@ -69,6 +70,7 @@ export function appendActivity(partial: Omit<ActivityEntry, "id" | "time"> & { t
 }
 
 export function subscribeActivity(listener: (entry: ActivityEntry) => void): () => void {
+  if(listeners.size>=16)throw new Error("ACTIVITY_SUBSCRIBER_LIMIT");
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

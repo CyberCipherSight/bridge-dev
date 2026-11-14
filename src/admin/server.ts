@@ -1,3 +1,5 @@
+import {requestLimit} from "../lib/http-limits.js";
+import {operationsRouter} from "./operations.js";
 import {extensionRouter} from "./extensions.js";
 import express from "express";
 import path from "path";
@@ -31,9 +33,10 @@ export function startAdminServer(options: AdminServerOptions): Server {
     '"': "&quot;",
     "'": "&#39;",
   })[char]!);
-  app.use(express.json({ limit: "5mb" }));
+  app.use(requestLimit(32));
+  app.use(express.json({ limit: "2mb" }));
   app.use(localhostOnly);
-  app.use((_req,res,next)=>{res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");next();});
+  app.use((_req,res,next)=>{res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");next();});
 
   // OAuth callbacks must not require ADMIN_TOKEN: OAuth providers redirect the browser here.
   // The route is still loopback-only and protected by the per-flow OAuth state value.
@@ -64,6 +67,7 @@ export function startAdminServer(options: AdminServerOptions): Server {
   app.get("/", (_req, res) => res.redirect("/ui/"));
   app.use(adminAuth);
   app.use((_req,res,next)=>{res.setHeader("Cache-Control","no-store");res.setHeader("Referrer-Policy","no-referrer");next();});
+  app.use(operationsRouter(options.manager));
   app.use(extensionRouter(options.manager));
   app.post("/api/lifecycle/stop",(_req,res)=>{res.setHeader("Connection","close");res.json({ok:true});setTimeout(()=>{void options.shutdown?.();},50);});
 
@@ -75,8 +79,10 @@ export function startAdminServer(options: AdminServerOptions): Server {
     instructionsPreview: options.instructionsPreview,
   }));
 
-  return app.listen(options.port, host, () => {
+  const listener=app.listen(options.port, host, () => {
     console.log(`  Admin UI:  http://${host}:${options.port}/ui`);
     console.log(`  Admin API: http://${host}:${options.port}/health`);
   });
+  listener.requestTimeout=30000;listener.headersTimeout=15000;listener.keepAliveTimeout=5000;
+  return listener;
 }

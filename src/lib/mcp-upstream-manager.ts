@@ -349,6 +349,7 @@ export class McpUpstreamManager {
 
     if (existing) await this.disconnect(serverId);
 
+    if(this.connections.size+this.connecting.size>=16)throw new Error("PROVIDER_CONNECTION_LIMIT: disable an idle provider before connecting another");
     const generation=this.generation;
     const attempt = (async (): Promise<UpstreamConnection> => {
       const { client, transport, pid } = await this.createTransport(config);

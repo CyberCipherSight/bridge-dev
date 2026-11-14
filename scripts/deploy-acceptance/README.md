@@ -67,3 +67,12 @@ denial, a separate client's denial of root, registry missing/v1 compatibility an
 admin authentication/isolation. It never relaxes managed acceptance: portable has
 no machine-context prerequisite or root-controller guarantee. The real HTTP
 `test-qa-diagnostics.mjs` runs this path in CI.
+
+## Persistent portable user-service rehearsal
+
+`node scripts/deploy-acceptance/user-service.mjs --execute-staging --evidence <private-dir>`
+records its exact inventory before creating a temporary user unit. All credentials,
+ports, workspace and audit state are disposable. It exercises real systemd crash
+restart, start-limit containment, provider-child cleanup, update and failure-triggered
+rollback, then uninstalls its unit. See [the service runbook](../../docs/PERSISTENT_SERVICE.md).
+This is staging SDK acceptance, not ChatGPT or reboot acceptance.

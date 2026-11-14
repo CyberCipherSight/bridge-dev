@@ -1,3 +1,8 @@
+import {safeEnvironment,saveSafeEnvironment} from "../lib/safe-environment.js";
+import {getLocalToolOverrides,saveLocalToolOverrides} from "../lib/tool-profile.js";
+import {runtimeVersion} from "../lib/service-config.js";
+import {getPolicyGate} from "../lib/policy-gateway.js";
+import {getRuntimeMode} from "../lib/runtime.js";
 import {redactAudit} from "../lib/hash-audit.js";
 import {tailscaleEndpoint} from "../lib/tailscale.js";
 import fs from "fs/promises";
@@ -38,33 +43,6 @@ function parseDotEnv(text: string): Record<string, string> {
   return out;
 }
 
-function serializeDotEnv(values: Record<string, string>, original: string): string {
-  const lines = original.split("\n");
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
-      result.push(line);
-      continue;
-    }
-    const key = trimmed.split("=")[0].trim();
-    if (key in values) {
-      result.push(`${key}=${values[key]}`);
-      seen.add(key);
-    } else {
-      result.push(line);
-    }
-  }
-
-  for (const [key, value] of Object.entries(values)) {
-    if (!seen.has(key)) result.push(`${key}=${value}`);
-  }
-
-  return result.join("\n");
-}
-
 export function createAdminRouter(manager: McpUpstreamManager, options: {
   mcpPort: number;
   pid: number;
@@ -73,13 +51,18 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
   instructionsPreview?: () => string;
 }): Router {
   const router = Router();
-  const envPath = path.resolve(process.cwd(), ".env");
+  const envPath = path.resolve(process.env.DOTENV_CONFIG_PATH || path.join(process.cwd(), ".env"));
 
   router.get("/health", async (_req: Request, res: Response) => {
     const upstream = manager.listStatusesCached();
     res.json({
       status: "ok",
       name: "bridge-dev-admin",
+      ...runtimeVersion(),
+      uptime_seconds: Math.floor(process.uptime()),
+      runtime_mode:getRuntimeMode(),
+      policy_mode:getPolicyGate().getActiveProfile(),
+      full_machine_access:getPolicyGate().getActiveProfile()==="dangerous",
       pid: options.pid,
       mcp_port: options.mcpPort,
       active_sessions: options.sessionCount(),
@@ -113,10 +96,10 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
   router.get("/api/config/env", async (_req, res) => {
     try {
       const text = await fs.readFile(envPath, "utf-8");
-      res.json({ ok: true, path: envPath, values: redactAudit(parseDotEnv(text)) });
+      res.json({ ok: true, path: envPath, values: redactAudit({...parseDotEnv(text),...safeEnvironment()}) });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        res.json({ ok: true, path: envPath, values: {} });
+        res.json({ ok: true, path: envPath, values:safeEnvironment() });
         return;
       }
       res.status(500).json({ ok: false, error: String(err) });
@@ -135,16 +118,9 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
         res.status(400).json({ ok: false, error: "values object required" });
         return;
       }
-      let original = "";
-      try {
-        original = await fs.readFile(envPath, "utf-8");
-      } catch {}
-      const next = serializeDotEnv(values, original || "");
-      await fs.writeFile(envPath, next, "utf-8");
-      for (const [k, v] of Object.entries(values)) {
-        process.env[k] = v;
-      }
-      res.json({ ok: true, path: envPath });
+      await getPolicyGate().audit.append({phase:"operator_safe_settings",keys:Object.keys(values)});
+      saveSafeEnvironment(values);
+      res.json({ok:true,credential_source_unchanged:true,restart_required:"Use bridge-dev service restart to apply runtime settings; credentials and policy are offline-only."});
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }
@@ -184,11 +160,7 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
   router.get("/api/local-tools", async (_req, res) => {
     try {
       const { LOCAL_TOOL_CATALOG } = await import("../lib/tool-profile.js");
-      const configPath = path.resolve(process.cwd(), "profiles", "tool-overrides.json");
-      let overrides: { enabled?: string[]; disabled?: string[] } = {};
-      try {
-        overrides = JSON.parse(await fs.readFile(configPath, "utf-8"));
-      } catch {}
+      const overrides=getLocalToolOverrides();
       res.json({ ok: true, tools: LOCAL_TOOL_CATALOG, overrides });
     } catch (err) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -204,9 +176,7 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
         : [];
       const enabled = names(req.body?.overrides?.enabled);
       const disabled = names(req.body?.overrides?.disabled).filter((name) => !enabled.includes(name));
-      const configPath = path.resolve(process.cwd(), "profiles", "tool-overrides.json");
-      await fs.mkdir(path.dirname(configPath), { recursive: true });
-      await fs.writeFile(configPath, JSON.stringify({ enabled, disabled }, null, 2) + "\n", "utf-8");
+      saveLocalToolOverrides({enabled,disabled});
       res.json({ ok: true, overrides: { enabled, disabled }, restart_required: "Open a new ChatGPT MCP session after changing local tool visibility." });
     } catch (err) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -283,7 +253,7 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
 
   router.get("/api/upstream/:id/tools", async (req, res) => {
     try {
-      const tools = await manager.listTools(req.params.id);
+      const tools = manager.inspectCachedTools(req.params.id);
       const config = manager.getServerConfig(req.params.id);
       res.json({
         ok: true,

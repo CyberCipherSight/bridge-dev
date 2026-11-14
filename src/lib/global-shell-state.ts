@@ -1,8 +1,11 @@
+import {atomicJson} from "./atomic-store.js";
+import {z} from "zod";
 import { createHash } from "node:crypto";
 import fs from "fs/promises";
 import path from "path";
 
 export interface GlobalShellState {
+  version?:1;
   workspace_key: string;
   cwd: string;
   updated_at: string;
@@ -30,11 +33,11 @@ export async function loadGlobalShellState(
 ): Promise<GlobalShellState | null> {
   try {
     const raw = await fs.readFile(statePath(workspaceRoot), "utf-8");
-    const parsed = JSON.parse(raw) as GlobalShellState;
-    if (!parsed.cwd) return null;
-    return parsed;
-  } catch {
-    return null;
+    const schema=z.object({version:z.literal(1).optional(),workspace_key:z.literal(workspaceKey(workspaceRoot)),cwd:z.string().refine(p=>path.isAbsolute(p)),updated_at:z.string(),recent_commands:z.array(z.string().max(1048576)).max(MAX_RECENT)}).strict();
+    return schema.parse(JSON.parse(raw));
+  } catch(error) {
+    if((error as NodeJS.ErrnoException).code==='ENOENT')return null;
+    throw Error('SHELL_STATE_INVALID_OR_FUTURE_SCHEMA');
   }
 }
 
@@ -51,14 +54,14 @@ export async function saveGlobalShellState(
   }
 
   const state: GlobalShellState = {
+    version:1,
     workspace_key: workspaceKey(workspaceRoot),
     cwd: path.resolve(cwd),
     updated_at: new Date().toISOString(),
     recent_commands: recent,
   };
 
-  await fs.mkdir(getStateDir(), { recursive: true });
-  await fs.writeFile(statePath(workspaceRoot), JSON.stringify(state, null, 2), "utf-8");
+  await atomicJson(statePath(workspaceRoot),state);
 }
 
 export async function restoreShellFromDisk(

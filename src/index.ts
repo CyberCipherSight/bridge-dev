@@ -1,7 +1,12 @@
 #!/usr/bin/env node
+import {redactAudit} from "./lib/hash-audit.js";
+import {loadGlobalShellState} from "./lib/global-shell-state.js";
+import {requestLimit} from "./lib/http-limits.js";
+import {runtimeVersion} from "./lib/service-config.js";
 import {shutdownShellProcesses} from "./tools/shell.js";
 
 import "dotenv/config";
+import {applySafeEnvironment} from "./lib/safe-environment.js";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -31,8 +36,9 @@ import { getChatGptToolProfile } from "./lib/tool-profile.js";
 import { getPolicyGate } from "./lib/policy-gateway.js";
 import { getRuntimeMode, platformCapabilities } from "./lib/runtime.js";
 
+applySafeEnvironment();
 // Policy is loaded once before listening or registering handlers.
-getPolicyGate();
+getPolicyGate().getActiveProfile();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "127.0.0.1";
 const MCP_TOKEN = (process.env.MCP_TOKEN || "").trim();
@@ -71,6 +77,7 @@ function resolveWorkspaceRoots(): string[] {
 const workspaceRoots = resolveWorkspaceRoots();
 const workspaceRoot = workspaceRoots[0] || process.cwd();
 setDefaultCwd(workspaceRoot);
+await loadGlobalShellState(workspaceRoot,workspaceRoot);
 
 const upstreamManager = await initUpstreamManager();
 
@@ -107,14 +114,15 @@ const sessionManager = createSessionManager({
 });
 
 const app = express();
+app.use(requestLimit(64));
 app.use(cors({exposedHeaders:["Mcp-Session-Id","Mcp-Protocol-Version"]}));
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "2mb" }));
 // ChatGPT co the goi "/" hoac "/mcp" — ho tro ca hai.
 // Neu dat MCP_TOKEN, endpoint doi thanh "/<token>" + "/mcp/<token>" va cac path
 // khong co token se tra 401 (chong scan tunnel URL / trang web goi vao localhost).
 const MCP_PATHS = [`/${MCP_TOKEN}`, `/mcp/${MCP_TOKEN}`, "/mcp"];
 const MCP_PATHS_SET = new Set(MCP_PATHS);
-// /health is unauthenticated, and startup output may be collected in logs.
+// Detailed health requires the same bearer credential as MCP.
 // Keep the real token only in the route matcher, never in diagnostic output.
 const DISPLAY_MCP_PATHS = MCP_TOKEN
   ? ["/[REDACTED_MCP_TOKEN]", "/mcp/[REDACTED_MCP_TOKEN]"]
@@ -123,7 +131,7 @@ const DISPLAY_MCP_PATHS = MCP_TOKEN
 app.use((req, res, next) => {
   const started = Date.now();
   const isMcpRoute = MCP_PATHS_SET.has(req.path);
-  const displayPath = MCP_TOKEN ? req.path.split(MCP_TOKEN).join("[REDACTED_MCP_TOKEN]") : req.path;
+  const displayPath = String(redactAudit(MCP_TOKEN ? req.path.split(MCP_TOKEN).join("[REDACTED_MCP_TOKEN]") : req.path));
   res.on("finish", () => {
     const duration = Date.now() - started;
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -173,10 +181,15 @@ if (MCP_TOKEN) {
   }
 }
 
-app.get("/health", (_req, res) => {
+app.get("/healthz", (_req, res) => { res.setHeader("Cache-Control","no-store"); res.json({ok:true}); });
+app.get("/health", (req, res) => {
+  const a=Buffer.from(req.headers.authorization?.replace(/^Bearer /, "")||""), b=Buffer.from(MCP_TOKEN);
+  res.setHeader("Cache-Control","no-store");
+  if(a.length!==b.length||!timingSafeEqual(a,b)){res.status(401).json({error:"MCP bearer token required"});return;}
   res.json({
     status: "ok",
     name: "bridge-dev",
+    ...runtimeVersion(),
     runtimeMode: getRuntimeMode(),
     platform: platformCapabilities(),
     workspace: workspaceRoot,
@@ -341,6 +354,10 @@ const server = app.listen(PORT, HOST, () => {
   console.log("Stop : Ctrl-C");
 });
 
+server.requestTimeout=30000;
+server.headersTimeout=15000;
+server.keepAliveTimeout=5000;
+server.maxRequestsPerSocket=1000;
 server.on("error", (err: NodeJS.ErrnoException) => {
   console.error("BridgeDev failed to listen on " + HOST + ":" + PORT + ": " + err.message);
   if (err.code === "EADDRINUSE") console.error("Choose a free PORT or stop the existing gateway explicitly.");
@@ -352,9 +369,13 @@ async function shutdown(code = 0): Promise<void> {
   if (stopping) return;
   stopping = true;
   sessionManager.stopCleanup();
+  // Refuse new work before draining sessions, providers and durable audit writes.
+  server.close();
+  adminServer.close();
   await shutdownShellProcesses();
   await sessionManager.close();
   try{await upstreamManager.shutdown();}catch(error){console.error("Provider cleanup error during shutdown: "+String(error));code=1;}
+  try{await getPolicyGate().audit.flush();}catch{console.error("Audit drain failed");code=1;}
   adminServer.closeAllConnections();
   server.closeAllConnections();
   await Promise.all([new Promise<void>(resolve => adminServer.close(() => resolve())), new Promise<void>(resolve => server.close(() => resolve()))]);

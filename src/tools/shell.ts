@@ -163,6 +163,8 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
     },
     async ({ command, working_directory, max_runtime_seconds, auth_token }) => {
       requireCommandAllowed(command);
+      if([...processes.values()].filter(p=>p.child.exitCode===null&&p.child.signalCode===null).length>=32)throw Error("PROCESS_LIMIT: stop an owned process before starting another");
+      for(const [id,item]of processes){if(processes.size<256)break;if(item.child.exitCode!==null||item.child.signalCode!==null)processes.delete(id);}
       const policy = getSecurityPolicy();
       const plan=diagnosticCommand(command),direct=plan?.runtimeVersion?undefined:plan;
       const authCheck = direct?{allowed:true,operationClass:"read_only" as const}:policy.authorizeCommand(command, auth_token);

@@ -33,7 +33,7 @@ try{
  const props=Object.entries(properties).filter(([,v])=>v).map(([k,v])=>'--property='+k+'='+v);props.push('--property=ReadOnlyPaths='+properties.ReadOnlyPaths+' '+release);
  plan=createFixtures(work,uid,gid,true);
  run(['/usr/bin/systemd-run','--unit='+unit,'--collect','--property=Type=simple','--property=Restart=no','--property=RuntimeMaxSec=150s','--property=WorkingDirectory='+work,'--property=EnvironmentFile='+envFile,...props,'/usr/bin/node',path.join(release,'dist/index.js')]);started=true;
- let ready=false;for(let n=0;n<150;n++){try{if((await fetch(`http://127.0.0.1:${port}/health`,{signal:AbortSignal.timeout(1000)})).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}if(!ready)throw Error('Rehearsal gateway health deadline');
+ let ready=false;for(let n=0;n<150;n++){try{if((await fetch(`http://127.0.0.1:${port}/healthz`,{signal:AbortSignal.timeout(1000)})).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}if(!ready)throw Error('Rehearsal gateway health deadline');
  const pid=Number(run(['/usr/bin/systemctl','show',unit,'--property=MainPID','--value']).trim());
  const actual=Object.fromEntries(run(['/usr/bin/systemctl','show',unit,...keys.map(k=>'--property='+k)]).trim().split('\n').map(line=>line.split(/=(.*)/s).slice(0,2)));
  for(const key of keys)if(key!=='ReadOnlyPaths'&&actual[key]!==properties[key])throw Error('Rehearsal property differs: '+key);

@@ -133,7 +133,7 @@ function log(msg) {
 try {
   log(`ports mcp=${mcpPort} admin=${adminPort} mock=${mockPort}`);
   await waitFor(`http://127.0.0.1:${mockPort}/health`);
-  await waitFor(`http://127.0.0.1:${mcpPort}/health`);
+  await waitFor(`http://127.0.0.1:${mcpPort}/healthz`);
   const anonymousAdmin = await fetch(`http://127.0.0.1:${adminPort}/health`);
   if (anonymousAdmin.status !== 401) throw Error("admin health exposed without token");
   await waitFor(`http://127.0.0.1:${adminPort}/health`);
@@ -249,7 +249,8 @@ try {
   const proxiedPayload = { registered:true, unsigned_call_refused:true };
 
   const adminHtml = await (await fetch(`http://127.0.0.1:${adminPort}/ui/`,{headers:adminHeaders})).text();
-  if (!adminHtml.includes("Import") || !adminHtml.includes("Claude Code") || !adminHtml.includes("OpenCode")) {
+  const adminScript=await (await fetch(`http://127.0.0.1:${adminPort}/ui/app.js`)).text();
+  if (!adminHtml.includes('data-tab="extensions"') || !adminScript.includes("Claude Code") || !adminScript.includes("OpenCode") || !adminScript.includes("/api/import/")) {
     throw new Error("admin ui missing expected import controls");
   }
 

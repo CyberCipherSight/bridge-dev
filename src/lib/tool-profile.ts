@@ -1,5 +1,5 @@
 import {MANAGEMENT_TOOL_CLASSES} from "../tools/extensions.js";
-import fs from "fs";
+import {readSettings,writeSettings,toolSettingsSchema} from "./runtime-settings.js";
 import path from "path";
 
 export type ToolProfileName = "full" | "slim";
@@ -20,16 +20,11 @@ interface LocalToolOverrides {
 const overridesPath = () => path.resolve(process.cwd(), "profiles", "tool-overrides.json");
 
 export function getLocalToolOverrides(): LocalToolOverrides {
-  try {
-    return JSON.parse(fs.readFileSync(overridesPath(), "utf-8")) as LocalToolOverrides;
-  } catch {
-    return {};
-  }
+  return readSettings('tool-overrides',overridesPath(),toolSettingsSchema,{});
 }
 
 export function saveLocalToolOverrides(next: LocalToolOverrides): void {
-  fs.mkdirSync(path.dirname(overridesPath()), { recursive: true });
-  fs.writeFileSync(overridesPath(), JSON.stringify(next, null, 2));
+  writeSettings('tool-overrides',toolSettingsSchema,next);
 }
 
 /** Core tools for ChatGPT web — smaller tools/list payload, fewer discovery errors. */

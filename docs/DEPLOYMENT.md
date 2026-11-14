@@ -1,4 +1,9 @@
-# Managed Linux deployment
+# Deployment
+
+For the portable systemd user service, use [Persistent service](PERSISTENT_SERVICE.md).
+The managed Linux procedure below is a separate optional deployment.
+
+## Managed Linux deployment
 
 **Mode-access preflight:** after installing the root controller, first verify
 that its activation directory is root-owned and traversable (0755) and its

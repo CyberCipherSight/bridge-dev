@@ -71,7 +71,7 @@ async function initialize(path = "/mcp") {
 }
 
 await run("health endpoint", async () => {
-  const res = await fetch(`${BASE}/health`);
+  const res = await fetch(`${BASE}/health`,{headers:{Authorization:"Bearer "+process.env.MCP_TOKEN}});
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (data.status !== "ok") throw new Error(JSON.stringify(data));

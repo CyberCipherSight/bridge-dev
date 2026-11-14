@@ -49,7 +49,7 @@ async function checked(c,tool,args){
 }
 try{
  gateway=spawn(process.execPath,['dist/index.js'],{env,stdio:['ignore','pipe','pipe']});gateway.stdout.on('data',b=>logs+=b);gateway.stderr.on('data',b=>logs+=b);
- for(let n=0;n<150;n++){if(gateway.exitCode!==null)throw Error(logs);try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
+ for(let n=0;n<150;n++){if(gateway.exitCode!==null)throw Error(logs);try{if((await fetch(`http://127.0.0.1:${port}/healthz`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
  ({c:client,t:transport}=await connect());let tools=[];
  for(let n=0;n<150;n++){tools=(await client.listTools()).tools;if(tools.filter(t=>t.name.startsWith('schema__')).length===names.length)break;await new Promise(r=>setTimeout(r,50));}
  assert.equal(tools.filter(t=>!t.name.startsWith('schema__')).length,73);

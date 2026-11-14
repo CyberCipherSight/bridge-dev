@@ -1,3 +1,4 @@
+import {readPortableMode} from "./portable-mode.js";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -144,8 +145,7 @@ export class PolicyGate {
   }
   getActiveProfile(): "strict" | "standard" | "dangerous" {
     if (this.config.context_files.length === 0) {
-      try{const mode=JSON.parse(fs.readFileSync(path.join(portableStateDir(),"mode.json"),"utf8"));if(mode.mode==="strict")return "strict";}catch{}
-      return "standard";
+      return readPortableMode();
     } // portable cannot activate a privileged operator lease
     const controllerAvailable=hostControllerAvailable();
     const activationFile=process.env.POLICYGATE_YOLO_ACTIVATION_FILE || (controllerAvailable?"/var/lib/bridge-dev-operator/active-lease.json":undefined);

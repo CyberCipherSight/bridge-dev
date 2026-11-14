@@ -21,7 +21,7 @@ const [port,adminPort]=await fixturePorts(2),token=randomBytes(32).toString('hex
 const env={...process.env,POLICYGATE_POLICY_FILE:policyFile,WORKSPACE_PATH:work,LOCAL_CODER_CHEZMOI_SOURCE_DIR:source,BRIDGEDEV_STATE_DIR:path.join(root,'state'),MCP_UPSTREAM_CONFIG:path.join(root,'upstreams.json'),MCP_TOKEN:token,ADMIN_TOKEN:admin,PORT:String(port),ADMIN_PORT:String(adminPort),MCP_SESSION_TTL_MS:'60000',MCP_SESSION_CLEANUP_MS:'60000',MCP_SESSION_DELETE_GRACE_MS:'100',CHATGPT_TOOL_PROFILE:'slim'};
 await fs.writeFile(env.MCP_UPSTREAM_CONFIG,JSON.stringify({servers:[{id:'legacy',transport:'http',url:'https://example.invalid/mcp',enabled:false,reviewed:true,expose:'none'}]}));
 let gateway,logs='',mockHost=false;const clients=[];
-async function start(){gateway=spawn(process.execPath,mockHost?['--experimental-test-module-mocks','scripts/mock-host-controller-gateway.mjs']:['dist/index.js'],{env,stdio:['ignore','pipe','pipe']});gateway.stdout.on('data',b=>logs+=b);gateway.stderr.on('data',b=>logs+=b);for(let i=0;i<150;i++){if(gateway.exitCode!==null)throw Error(logs);try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok)return;}catch{}await new Promise(r=>setTimeout(r,50));}throw Error('Startup timeout: '+logs);}
+async function start(){gateway=spawn(process.execPath,mockHost?['--experimental-test-module-mocks','scripts/mock-host-controller-gateway.mjs']:['dist/index.js'],{env,stdio:['ignore','pipe','pipe']});gateway.stdout.on('data',b=>logs+=b);gateway.stderr.on('data',b=>logs+=b);for(let i=0;i<150;i++){if(gateway.exitCode!==null)throw Error(logs);try{if((await fetch(`http://127.0.0.1:${port}/healthz`)).ok)return;}catch{}await new Promise(r=>setTimeout(r,50));}throw Error('Startup timeout: '+logs);}
 async function stop(){if(!gateway||gateway.exitCode!==null)return;const exit=new Promise(resolve=>gateway.once('exit',resolve));await fetch(`http://127.0.0.1:${adminPort}/api/lifecycle/stop`,{method:'POST',headers:{Authorization:'Bearer '+admin,'Content-Type':'application/json'},body:'{}'});await exit;assert.equal(gateway.exitCode,0,logs);}
 function cli(args){const result=spawnSync(process.execPath,['dist/cli.js',...args,'--json'],{env,encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr+' '+result.stdout);return JSON.parse(result.stdout).data;}
 async function adminGet(route){const response=await fetch(`http://127.0.0.1:${adminPort}`+route,{headers:{Authorization:'Bearer '+admin}});assert.equal(response.status,200);return response.json();}
@@ -96,7 +96,7 @@ try{
  await fs.writeFile(env.POLICYGATE_YOLO_ACTIVATION_FILE,JSON.stringify({mode:'standard'}));
  await fs.rm(env.POLICYGATE_YOLO_LEASE);await denied(yolo.client,'sudo id');
  await fs.writeFile(env.POLICYGATE_YOLO_LEASE,copiedLease);await denied(yolo.client,'sudo id',/POLICYGATE_APPROVAL_REQUIRED/);
- assert.equal((await (await fetch(`http://127.0.0.1:${port}/health`)).json()).fullMachineAccess,false,'Replayed lease restored gateway YOLO');
+ assert.equal((await (await fetch(`http://127.0.0.1:${port}/health`,{headers:{Authorization:"Bearer "+token}})).json()).fullMachineAccess,false,'Replayed lease restored gateway YOLO');
  await fs.writeFile(env.POLICYGATE_YOLO_ACTIVATION_FILE,JSON.stringify({mode:'strict'}));await fs.writeFile(env.POLICYGATE_MODE_FILE,JSON.stringify({mode:'standard'}));await denied(yolo.client,'pwd',/POLICYGATE_APPROVAL_REQUIRED/);
  await fs.writeFile(env.POLICYGATE_YOLO_ACTIVATION_FILE,JSON.stringify({mode:'standard'}));
  await lease(Date.now()-1);await denied(yolo.client,'sudo id');

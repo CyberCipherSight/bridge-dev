@@ -1,3 +1,4 @@
+import {readSettings,writeSettings,toolSettingsSchema} from "./runtime-settings.js";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -73,7 +74,7 @@ async function latestPluginRoot(plugin: string): Promise<string | undefined> {
 
 export async function getCodexHooks(): Promise<CodexHook[]> {
   const { enabledPlugins, trustedHooks } = await codexConfig();
-  const state = await readJson<{ enabled?: string[]; disabled?: string[] }>(STATE_PATH, {});
+  const state = readSettings('codex-hooks',STATE_PATH,toolSettingsSchema,{});
   const forcedEnabled = new Set(state.enabled ?? []);
   const forcedDisabled = new Set(state.disabled ?? []);
   const found: CodexHook[] = [];
@@ -128,8 +129,7 @@ export async function saveCodexHooks(enabledIds: unknown): Promise<CodexHook[]> 
   const enabled = Array.isArray(enabledIds)
     ? [...new Set(enabledIds.filter((id): id is string => typeof id === "string" && known.has(id)))]
     : [];
-  await fs.mkdir(path.dirname(STATE_PATH), { recursive: true });
-  await fs.writeFile(STATE_PATH, JSON.stringify({ enabled, disabled: hooks.map((hook) => hook.id).filter((id) => !enabled.includes(id)) }, null, 2) + "\n");
+  writeSettings('codex-hooks',toolSettingsSchema,{enabled,disabled:hooks.map(hook=>hook.id).filter(id=>!enabled.includes(id))});
   return getCodexHooks();
 }
 
