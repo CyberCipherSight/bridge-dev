@@ -64,6 +64,13 @@ try{
  const stale=await client.callTool({name:'fixture__echo',arguments:{message:'stale'}});assert.equal(stale.isError,true);
  await client.close();client=null;await stop();await start();assert.equal((await api('/api/extensions')).body.data.providers[0].enabled,false);
  const remove=cli(['mcp','remove','fixture']);cli(['approve',remove.id]);assert.equal((await api('/api/extensions')).body.data.providers.length,0);
+ // A lifecycle proposal must preserve reviewed exposure, classes and endpoint settings.
+ const reference={id:'review-preservation',name:'Review fixture',enabled:false,transport:'http',url:`http://127.0.0.1:${port}/never-connect`,allow_private_network:true,expose:'allowlist',tools:['echo'],tool_permissions:{echo:'R'},bearer_token_env_var:'FIXTURE_PROVIDER_CREDENTIAL',headers:{'X-Fixture-Reference':'preserved'}};
+ assert.equal((await api('/api/upstream',{server:reference})).status,200);
+ const preserved=await api('/api/extensions/provider-review',{name:reference.id,enabled:true});assert.equal(preserved.status,200);
+ const proposedRaw=JSON.parse(await fs.readFile(path.join(root,'state/extensions/proposals',preserved.body.data.id+'.json'),'utf8')).provider;
+ assert.deepEqual(proposedRaw.tools,['echo']);assert.deepEqual(proposedRaw.tool_permissions,{echo:'R'});assert.equal(proposedRaw.allow_private_network,true);assert.equal(proposedRaw.bearer_token_env_var,reference.bearer_token_env_var);assert.deepEqual(proposedRaw.headers,reference.headers);assert.equal(proposedRaw.url,reference.url);
+ const reselected=await api('/api/extensions/provider-review',{name:reference.id,enabled:false,tools:['echo']});assert.equal(reselected.status,200);assert.equal(reselected.body.data.provider.tool_permissions.echo,'R');
  assert.ok(!logs.includes(token)&&!logs.includes(admin),'Credentials leaked to gateway logs');
  console.log('Extension interfaces: CLI preview/approval, authenticated admin, independent HTTP client, allowlisted proxy, skill load, model request, self-approval refusal, disable, restart and removal PASS');
 }finally{await client?.close().catch(()=>{});await stop();await fs.rm(root,{recursive:true,force:true});}

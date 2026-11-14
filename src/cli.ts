@@ -6,6 +6,7 @@ import {readPortableMode} from "./lib/portable-mode.js";
  */
 
 import "dotenv/config";
+import {startConfiguredService} from "./lib/service-manager.js";
 import {serviceCli} from "./lib/service-cli.js";
 import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
@@ -605,7 +606,11 @@ async function main() {
       cmdLogin(args.slice(1));
       break;
     case "start":
-      if((await userServiceStatus()).installed){await serviceCli(["service","start"]);break;}
+      if((await userServiceStatus()).installed){
+        const expose=args.includes("--funnel")||process.env.BRIDGEDEV_FUNNEL==="true"||process.env.BRIDGEDEV_TRANSPORT==="tailscale";
+        const status=await startConfiguredService(undefined,expose?enableTailscaleFunnel:undefined);
+        console.log(JSON.stringify(status));break;
+      }
     case "serve":
     case "start-server": {
       const port = process.env.PORT || "3000";

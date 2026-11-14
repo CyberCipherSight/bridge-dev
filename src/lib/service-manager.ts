@@ -231,6 +231,20 @@ export async function controlService(
   await systemctl([action, c.unit]);
   return serviceStatus(root);
 }
+/** Existing explicit CLI exposure remains opt-in and follows authenticated readiness. */
+export async function startConfiguredService(
+  root = serviceRoot(),
+  expose?: (port: number) => unknown,
+): Promise<Record<string, any>> {
+  const status = await controlService("start", root);
+  if (expose) {
+    const config = await readServiceConfig(root);
+    if (!config) throw Error("SERVICE_NOT_INSTALLED");
+    await checkGateway(config, false);
+    await expose(config.port);
+  }
+  return status;
+}
 async function authHealth(c: ServiceConfig): Promise<any> {
   const env = privateEnvironment(c.env_file);
   const response = await fetch(`http://127.0.0.1:${c.admin_port}/health`, {

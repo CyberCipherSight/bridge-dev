@@ -26,7 +26,10 @@ also starts it. Existing custom units are not overwritten. Uninstall stops and
 disables the unit but preserves releases, state, credentials and linger.
 `start`, `stop`, `restart`, `enable` and `disable` are also service subcommands.
 Top-level `start`, `stop` and `restart` use the installed user service; `serve`
-continues to run a foreground gateway and refuses occupied ports.
+continues to run a foreground gateway and refuses occupied ports. The existing
+explicit `bridge-dev start --funnel` opt-in also works with the persistent service:
+it waits for authenticated readiness before invoking the ownership-aware exposure
+helper. Ordinary start and every service subcommand leave Funnel unchanged.
 
 Boot without login additionally requires linger. Status reports it; the CLI
 reports the exact operator command if missing:

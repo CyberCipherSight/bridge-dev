@@ -34,6 +34,10 @@ implementation used a separate main checkout.
   restart and retains the newer operator CLI. A pure CI ledger test and real
   old-runtime user-unit rehearsal cover this compatibility boundary.
 
+- Final lifecycle regressions cover explicit persistent `start --funnel` readiness
+  without any default exposure, and provider enable/disable proposals preserving
+  reviewed tool names/classes, private-network opt-in and credential references.
+
 ## Verification
 
 The local gates are build, unit suite, policy, portable, CLI, extensions,

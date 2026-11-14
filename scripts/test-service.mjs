@@ -292,6 +292,28 @@ assert.match(
   await fs.readFile(c.audit_file, "utf8"),
   /accepted_before_legacy_restart/,
 );
+// Ordinary start has no exposure effect; an explicit callback follows readiness.
+const exposureEvents = [];
+const fetchBeforeStart = globalThis.fetch;
+globalThis.fetch = async () => {
+  exposureEvents.push("health");
+  return new Response(
+    JSON.stringify({ status: "ok", commit: a, full_machine_access: false }),
+  );
+};
+try {
+  await manager.startConfiguredService(root, (port) => {
+    assert.equal(port, c.port);
+    assert.ok(exposureEvents.length > 0);
+    exposureEvents.push("expose");
+  });
+  assert.equal(exposureEvents.at(-1), "expose");
+  exposureEvents.length = 0;
+  await manager.startConfiguredService(root);
+  assert.deepEqual(exposureEvents, []);
+} finally {
+  globalThis.fetch = fetchBeforeStart;
+}
 await manager.controlService("uninstall", root);
 await manager.controlService("uninstall", root);
 assert.equal(

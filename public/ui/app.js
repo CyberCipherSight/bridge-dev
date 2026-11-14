@@ -435,9 +435,12 @@ async function providers() {
   );
 }
 async function providerDetails(p) {
-  const tools = await api(
-      "/api/extensions/provider-tools?name=" + encodeURIComponent(p.id),
-    ),
+  const [tools, configuration] = await Promise.all([
+    api("/api/extensions/provider-tools?name=" + encodeURIComponent(p.id)),
+    api("/api/upstream"),
+  ]);
+  const reviewed =
+      configuration.config.servers.find((server) => server.id === p.id) || {},
     content = el("div");
   pairs(
     {
@@ -455,9 +458,7 @@ async function providerDetails(p) {
   for (const tool of tools.tools || []) {
     const label = el("label", undefined, { class: "field" }),
       check = el("input", undefined, { type: "checkbox", value: tool.name });
-    check.checked = (p.exposed_tools || p.proxied_tools || []).includes(
-      tool.name,
-    );
+    check.checked = (reviewed.tools || []).includes(tool.name);
     label.append(
       check,
       el("span", tool.name + " — " + (tool.description || "")),
@@ -468,9 +469,10 @@ async function providerDetails(p) {
   const permission = el("select", undefined, {
     "aria-label": "Granted tool permission",
   });
+  permission.append(el("option", "Preserve reviewed classes", { value: "" }));
   for (const v of ["R", "W", "X"])
     permission.append(el("option", v, { value: v }));
-  permission.value = "X";
+  permission.value = "";
   content.append(
     controls(
       permission,
@@ -479,7 +481,7 @@ async function providerDetails(p) {
           name: p.id,
           enabled: Boolean(p.enabled),
           tools: allow.filter((x) => x.checked).map((x) => x.value),
-          permission: permission.value,
+          ...(permission.value ? { permission: permission.value } : {}),
         });
         details(
           "Permission proposal",
@@ -494,8 +496,6 @@ async function providerDetails(p) {
         const proposal = await api("/api/extensions/provider-review", {
           name: p.id,
           enabled: !p.enabled,
-          tools: allow.filter((x) => x.checked).map((x) => x.value),
-          permission: permission.value,
         });
         details(
           "Lifecycle proposal",

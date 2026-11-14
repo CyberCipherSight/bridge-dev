@@ -234,7 +234,7 @@ try {
   // Inject hostile provider metadata, source URLs and audit fields at the fetch boundary.
   // This exercises the actual DOM renderer without installing an executable.
   await evaluate(
-    `globalThis.originalFetch=fetch;globalThis.hostile=${JSON.stringify(hostile)};globalThis.fetch=async(...args)=>{const response=await originalFetch(...args);const url=String(args[0]);if(url==='/api/extensions'){const data=await response.json();data.data.providers=[{id:'hostile',name:hostile,transport:'http',enabled:false,health:'error',last_error:hostile,proxied_tools:[]}];data.data.entries.forEach(e=>{e.source=hostile;e.resolved=hostile;});return new Response(JSON.stringify(data));}if(url.startsWith('/api/extensions/provider-tools'))return new Response(JSON.stringify({ok:true,data:{tools:[{name:hostile,description:hostile}]}}));if(url.startsWith('/api/audit')){const data=await response.json();data.entries.unshift({time:hostile,actor:hostile,phase:hostile,outcome:hostile});return new Response(JSON.stringify(data));}return response;}`,
+    `globalThis.originalFetch=fetch;globalThis.hostile=${JSON.stringify(hostile)};globalThis.fetch=async(...args)=>{const url=String(args[0]);if(url==='/api/extensions/provider-review'){globalThis.lastProviderReview=JSON.parse(args[1].body);return new Response(JSON.stringify({ok:true,data:{id:'a'.repeat(64),action:'enable'}}));}const response=await originalFetch(...args);if(url==='/api/extensions'){const data=await response.json();data.data.providers=[{id:'hostile',name:hostile,transport:'http',enabled:false,health:'error',last_error:hostile,proxied_tools:['hostile__echo']}];data.data.entries.forEach(e=>{e.source=hostile;e.resolved=hostile;});return new Response(JSON.stringify(data));}if(url==='/api/upstream')return new Response(JSON.stringify({ok:true,config:{servers:[{id:'hostile',enabled:false,tools:['echo'],tool_permissions:{echo:'R'},allow_private_network:true}]}}));if(url.startsWith('/api/extensions/provider-tools'))return new Response(JSON.stringify({ok:true,data:{tools:[{name:'echo',description:'Reviewed fixture'},{name:hostile,description:hostile}]}}));if(url.startsWith('/api/audit')){const data=await response.json();data.entries.unshift({time:hostile,actor:hostile,phase:hostile,outcome:hostile});return new Response(JSON.stringify(data));}return response;}`,
   );
   await evaluate('navigate("extensions")');
   await evaluate(
@@ -247,6 +247,37 @@ try {
     ),
     0,
   );
+  await evaluate('document.getElementById("detail").close()');
+  await evaluate('navigate("extensions")');
+  await evaluate(
+    '[...screen.querySelectorAll("button")].find(b=>b.textContent==="Inspect").click()',
+  );
+  await waitFor(() => evaluate('document.getElementById("detail").open'));
+  assert.equal(
+    await evaluate(
+      `document.querySelector('#detail input[value="echo"]').checked`,
+    ),
+    true,
+    "Raw allowlist tool must remain selected despite namespaced exposure",
+  );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('#detail select[aria-label="Granted tool permission"]').value`,
+    ),
+    "",
+  );
+  await evaluate(
+    '[...document.querySelectorAll("#detail button")].find(b=>b.textContent==="Preview enable").click()',
+  );
+  await waitFor(() =>
+    evaluate(
+      'document.getElementById("detail-title").textContent==="Lifecycle proposal"',
+    ),
+  );
+  assert.deepEqual(await evaluate("Object.keys(lastProviderReview).sort()"), [
+    "enabled",
+    "name",
+  ]);
   await evaluate('document.getElementById("detail").close()');
   const names = [
     "overview",
