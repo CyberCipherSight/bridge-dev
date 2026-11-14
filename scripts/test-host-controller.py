@@ -1,6 +1,23 @@
-import importlib.util, io, json, multiprocessing, os, subprocess, sys, tempfile, time, types, uuid
+import ctypes, errno, importlib.util, io, json, multiprocessing, os, subprocess, sys, tempfile, time, types, uuid
 from pathlib import Path
 from unittest.mock import patch
+
+# Portable cutovers run as their non-root owner. Cross-parent directory swaps
+# update '..' and require owner-write on each moved root, even with sealed files.
+assert os.getuid()!=0, 'Run permission regression as an unprivileged user'
+with tempfile.TemporaryDirectory(prefix='bridge-release-perms-') as temp:
+    parent=Path(temp); (parent/'installed').mkdir(); (parent/'releases').mkdir()
+    live=parent/'installed'/'app'; staged=parent/'releases'/'candidate'; live.mkdir(); staged.mkdir()
+    (live/'revision').write_text('baseline'); (staged/'revision').write_text('candidate'); (staged/'revision').chmod(0o444)
+    staged.chmod(0o555); libc=ctypes.CDLL(None,use_errno=True)
+    assert libc.renameat2(-100,os.fsencode(live),-100,os.fsencode(staged),2)==-1
+    assert ctypes.get_errno()==errno.EACCES
+    assert (live/'revision').read_text()=='baseline'
+    staged.chmod(0o755)
+    assert libc.renameat2(-100,os.fsencode(live),-100,os.fsencode(staged),2)==0
+    assert (live/'revision').read_text()=='candidate' and (live/'revision').stat().st_mode&0o777==0o444
+    assert libc.renameat2(-100,os.fsencode(live),-100,os.fsencode(staged),2)==0
+    assert (live/'revision').read_text()=='baseline'
 
 # Regression: a root install launched with umask 077 must not leave the
 # gateway's activation directory at inaccessible mode 0700.

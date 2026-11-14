@@ -77,7 +77,11 @@ update a portable app.
 For an authorized portable update, preserve the private environment, workspace,
 state and launcher. Stage the exact CI-green source/build in a separate user-owned
 release, verify its hashes and isolated acceptance, and retain the current physical
-app for rollback. Stop only the known gateway through its authenticated localhost
+app for rollback. On Linux, rehearse cross-parent exchanges with the exact
+artifact modes: both moved top-level directories need owner-write (0755) to update
+their parent links. Payload files can remain sealed 0444/0555. Reject a 0555 root
+before stopping anything. A completed rollback guard must return idempotently.
+Stop only the known gateway through its authenticated localhost
 operator API. A detached bounded user controller atomically exchanges the physical
 app directories, starts the replacement as the same user, and verifies real SDK
 acceptance and protected-file/route identity. If any gate fails, stop the candidate,
