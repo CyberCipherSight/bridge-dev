@@ -63,6 +63,7 @@ export function startAdminServer(options: AdminServerOptions): Server {
   app.use("/ui", express.static(uiDir));
   app.get("/", (_req, res) => res.redirect("/ui/"));
   app.use(adminAuth);
+  app.use((_req,res,next)=>{res.setHeader("Cache-Control","no-store");res.setHeader("Referrer-Policy","no-referrer");next();});
   app.use(extensionRouter(options.manager));
   app.post("/api/lifecycle/stop",(_req,res)=>{res.setHeader("Connection","close");res.json({ok:true});setTimeout(()=>{void options.shutdown?.();},50);});
 

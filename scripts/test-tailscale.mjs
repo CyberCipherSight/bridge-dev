@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {mock} from 'node:test';
+let configuration={},calls=[];
+mock.module('node:child_process',{namedExports:{execFileSync:(exe,args)=>{assert.equal(exe,'tailscale');calls.push(args);if(args.join(' ')==='funnel status --json')return JSON.stringify(configuration);return '';}}});
+const {tailscaleEndpoint,enableTailscaleFunnel}=await import('../dist/lib/tailscale.js');
+delete process.env.BRIDGEDEV_PUBLIC_URL;
+assert.equal(tailscaleEndpoint(32851),null);
+enableTailscaleFunnel(32851);assert.deepEqual(calls.at(-1),['funnel','--bg','32851']);
+configuration={Web:{'fixture.ts.net:443':{Handlers:{'/':{Proxy:'http://127.0.0.1:32851'},'/other':{Proxy:'http://127.0.0.1:43951'}}}},TCP:{443:{HTTPS:true}},AllowFunnel:{'fixture.ts.net:443':true}};
+assert.equal(tailscaleEndpoint(32851),'https://fixture.ts.net');assert.equal(tailscaleEndpoint(32852),null);
+calls=[];enableTailscaleFunnel(32851);assert.deepEqual(calls,[['funnel','status','--json']]);
+assert.throws(()=>enableTailscaleFunnel(32852),/Existing Tailscale configuration/);assert.ok(calls.every(args=>args.join(' ')==='funnel status --json'));
+configuration.Web['fixture.ts.net:443'].Handlers['/'].Proxy='http://example.test:32851';assert.equal(tailscaleEndpoint(32851),null);
+process.env.BRIDGEDEV_PUBLIC_URL='https://secret@example.test';assert.equal(tailscaleEndpoint(32851),null);
+process.env.BRIDGEDEV_PUBLIC_URL='https://public.example.test/';assert.equal(tailscaleEndpoint(32851),'https://public.example.test');
+console.log('Funnel: bounded JSON status, correct local target, explicit enable and conflict preservation PASS');

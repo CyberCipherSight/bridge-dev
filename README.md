@@ -89,3 +89,7 @@ Full System displays `Enable Full System (sudo)? [Y/n]`. Press Enter or `y` to a
 ## License
 
 [MIT](LICENSE). Based on [chatgpt-local-coder](https://github.com/hoangcoderr/chatgpt-local-coder) by hoangcoderr; upstream attribution retained. The historical Go prototype is preserved in `archive/go-prototype`.
+
+Tailscale is optional: `bridge-dev start --funnel` explicitly enables exposure; stop/restart preserve existing routes.
+
+[Stabilization QA and privilege acceptance limits](docs/FINAL_QA.md).

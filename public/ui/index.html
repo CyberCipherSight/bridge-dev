@@ -41,9 +41,36 @@
       </header>
 
       <section id="dashboard" class="view active">
+        <div id="chatgpt-connection-card" class="connection-hero-card">
+          <div class="hero-header">
+            <div class="hero-title-group">
+              <span class="pulse-indicator"></span>
+              <span class="hero-badge">ChatGPT Web Integration</span>
+            </div>
+            <span class="status-pill active" id="gateway-status-pill">Gateway Online</span>
+          </div>
+          <p class="hero-description">Add this URL to ChatGPT Web (<strong>Custom MCP Server &rarr; Connection</strong>) to connect directly to your development environment.</p>
+          <div class="connection-box">
+            <span class="connection-label">Connection URL:</span>
+            <input type="text" readonly id="chatgpt-url-input" class="connection-url-field" value="Loading connection URL..." />
+            <button type="button" class="btn copy-btn" id="copy-chatgpt-url">Copy URL</button>
+          </div>
+          <div class="hero-meta-tags">
+            <span class="meta-tag">Auth: None (URL token)</span>
+            <span class="meta-tag">Endpoint: /mcp</span>
+            <span class="meta-tag">Profile: Slim (52 Native Tools)</span>
+            <span class="meta-tag">Workspace: Scoped Read &amp; Write</span>
+          </div>
+        </div>
+
+        <div class="section-title"><h3>Environment Metrics</h3></div>
         <div class="stat-grid" id="stat-grid"></div>
+
         <div class="panel">
-          <div class="panel-head"><h2>Active Upstreams</h2></div>
+          <div class="panel-head">
+            <h2>Active Upstream Servers</h2>
+            <span class="panel-badge" id="upstream-count-badge">0 configured</span>
+          </div>
           <div id="dash-servers" class="table-wrap"></div>
         </div>
       </section>

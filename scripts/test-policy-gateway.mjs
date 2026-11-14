@@ -43,6 +43,8 @@ const otherGitInit=spawnSync("git",["init","-q",maliciousDir],{encoding:"utf8"})
 if(otherGitInit.status!==0)throw Error(otherGitInit.stderr);
 const cfg=JSON.parse(await fsp.readFile(new URL("../profiles/policy.example.json",import.meta.url),"utf8"));
 Object.assign(cfg,{
+  // Keep the signed-approval regression explicit even for a safe diagnostic.
+  approval_commands:[...cfg.approval_commands,"id -u"],
   context_files:[contextA,contextB],
   writable_roots:[work],protected_paths:[path.join(work,"protected")],
   secret_paths:[secretDir],approval_paths:[path.join(work,"approval")],
@@ -279,7 +281,7 @@ try{
     const restricted={...policy,denied_commands:["echo forbidden"],approval_commands:["echo guarded"]};
     assert.match(String(analyzeCommand("echo forbidden",restricted,cfgFile,work).deny),/operator-denied command/);
     assert.equal(analyzeCommand("echo guarded",restricted,cfgFile,work).approval,true);
-    assert.equal(analyzeCommand("echo permitted",restricted,cfgFile,work).approval,true);
+    assert.equal(analyzeCommand("echo permitted",restricted,cfgFile,work).approval,false);
     assert.equal(analyzeCommand("pwd",restricted,cfgFile,work).approval,false);
   });
   await test("direct MCP commands and admin API bypass denied",async()=>{

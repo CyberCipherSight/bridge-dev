@@ -58,3 +58,12 @@ This checks real root-owned 0600 files and 0700 parents, clear MCP permission er
 positive namespace preflight, the operator CLI and complete acceptance, then stops
 the transient gateway and deletes its scratch tree. It never uses the production
 application environment, credentials or ledger. It is not part of unprivileged CI.
+
+`portable-client.mjs` is the independent user-owned portable acceptance client.
+It creates the same scoped read-only fixtures after gateway startup, preflights
+them as that user, validates every exposed read tool with the official SDK and
+removes all fixtures on exit. It verifies safe diagnostics, privileged/destructive
+denial, a separate client's denial of root, registry missing/v1 compatibility and
+admin authentication/isolation. It never relaxes managed acceptance: portable has
+no machine-context prerequisite or root-controller guarantee. The real HTTP
+`test-qa-diagnostics.mjs` runs this path in CI.

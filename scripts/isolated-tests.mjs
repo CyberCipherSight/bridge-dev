@@ -22,7 +22,7 @@ if(scripts.length>1){
  fs.rmSync(base,{recursive:true,force:true});process.exit(failed?1:0);
 }
 const results=[];
-for(const script of scripts){const r=spawnSync(process.execPath,[...(["test-source-fixtures.mjs","test-network-fixtures.mjs"].some(name=>script.endsWith(name))?["--experimental-test-module-mocks"]:[]),script,...(script.endsWith("sync-tool-counts.mjs")?["--check-manifest","profiles/native-tool-counts.json"]:[])],{cwd:repo,env,encoding:'utf8',timeout:120000});results.push({script,status:r.status,error:r.error?.message,output:(r.stdout||'')+(r.stderr||'')});console.log(script+' exit '+r.status);}
+for(const script of scripts){const r=spawnSync(process.execPath,[...(["test-source-fixtures.mjs","test-network-fixtures.mjs","test-tailscale.mjs","test-job-results.mjs"].some(name=>script.endsWith(name))?["--experimental-test-module-mocks"]:[]),script,...(script.endsWith("sync-tool-counts.mjs")?["--check-manifest","profiles/native-tool-counts.json"]:[])],{cwd:repo,env,encoding:'utf8',timeout:120000});results.push({script,status:r.status,error:r.error?.message,output:(r.stdout||'')+(r.stderr||'')});console.log(script+' exit '+r.status);}
 fs.writeFileSync(path.join(base,'results.json'),JSON.stringify(results,null,2));
 fs.rmSync(base,{recursive:true,force:true});
 if(results.some(r=>r.status!==0)){for(const r of results.filter(r=>r.status!==0))console.error(r.output);process.exitCode=1;}

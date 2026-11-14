@@ -66,3 +66,28 @@ connector acceptance is a separate operator test.
   31 exposed read cases. The rehearsal used synthetic state and no production
   credentials. Actual deployment results belong in the operator receipt/canonical
   system documentation, not in this procedure.
+
+## Portable runtime updates
+
+Verify the actual listener PID, executable, owner and runtime before choosing a
+runbook. A portable foreground gateway is not the historical managed system unit.
+Do not start/restart that inactive unit or install the root controller just to
+update a portable app.
+
+For an authorized portable update, preserve the private environment, workspace,
+state and launcher. Stage the exact CI-green source/build in a separate user-owned
+release, verify its hashes and isolated acceptance, and retain the current physical
+app for rollback. Stop only the known gateway through its authenticated localhost
+operator API. A detached bounded user controller atomically exchanges the physical
+app directories, starts the replacement as the same user, and verifies real SDK
+acceptance and protected-file/route identity. If any gate fails, stop the candidate,
+exchange back and restart the original; never restore or rewrite an audit ledger.
+Keep a separate bounded guard until acceptance completes. No Funnel mutation,
+controller installation, permanent service, root lease or sudoers change is needed.
+Do not replace an app while tests still depend on its physical directory.
+
+Portable context is optional by default: acceptance must not pretend that a
+pre-context pwd requires denial. Managed acceptance still requires that denial.
+Registry `missing` is a valid empty portable state; do not manufacture a production
+registry merely to satisfy the managed harness. See [stabilization evidence and
+remaining privilege gates](FINAL_QA.md).

@@ -1,4 +1,5 @@
 import {redactAudit} from "../lib/hash-audit.js";
+import {tailscaleEndpoint} from "../lib/tailscale.js";
 import fs from "fs/promises";
 import path from "path";
 import { Router, type Request, type Response } from "express";
@@ -84,10 +85,17 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
       active_sessions: options.sessionCount(),
       default_cwd: getDefaultCwd(),
       full_disk_access: getFullDiskAccess(),
+      public_url: tailscaleEndpoint(options.mcpPort),
       upstream,
       checkpoint: getCheckpointConfig(),
       instructions: options.instructionSummary?.() ?? null,
     });
+  });
+
+  // Credentials are returned only by this authenticated, explicit connection view.
+  router.get("/api/access", (_req, res) => {
+    res.setHeader("Cache-Control","no-store");
+    res.json({mcp_token:process.env.MCP_TOKEN || ""});
   });
 
   router.get("/api/instructions/preview", (_req, res) => {

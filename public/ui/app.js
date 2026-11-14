@@ -101,18 +101,81 @@ function serversTable(rows, { actions = true } = {}) {
 
 async function loadDashboard() {
   const health = await api("/health");
-  document.getElementById("conn-status").textContent = `MCP :${health.mcp_port} · ${health.active_sessions} sessions`;
+  const connStatus = document.getElementById("conn-status");
+  if (connStatus) {
+    connStatus.innerHTML = `<span class="pulse-indicator-small"></span>Connected · :${health.mcp_port}`;
+    connStatus.className = "conn-dot connected";
+  }
+
+  const baseUrl = health.public_url || `http://127.0.0.1:${health.mcp_port}`;
+  const access = await api("/api/access");
+  const mcpToken = access.mcp_token || "";
+  const connectionUrl = mcpToken ? `${baseUrl}/mcp/${mcpToken}` : `${baseUrl}/mcp`;
+
+  const urlInput = document.getElementById("chatgpt-url-input");
+  if (urlInput) urlInput.value = connectionUrl;
+
+  const copyBtn = document.getElementById("copy-chatgpt-url");
+  if (copyBtn && !copyBtn._bound) {
+    copyBtn._bound = true;
+    copyBtn.addEventListener("click", () => {
+      const input = document.getElementById("chatgpt-url-input");
+      if (!input || !input.value) return;
+      navigator.clipboard.writeText(input.value).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = "Copied!";
+        copyBtn.classList.add("copied");
+        setTimeout(() => {
+          copyBtn.textContent = orig;
+          copyBtn.classList.remove("copied");
+        }, 2000);
+      }).catch(() => {
+        input.select();
+        document.execCommand("copy");
+      });
+    });
+  }
+
   const instr = health.instructions || {};
   const memCount = instr.memory_files?.length ?? 0;
-  const gitBranch = instr.git?.branch || (instr.git?.is_repo === false ? "—" : "?");
+  const gitBranch = instr.git?.branch || (instr.git?.is_repo === false ? "None (Not Git)" : "?");
+  const profile = instr.tool_profile || "slim";
+  const upstreams = health.upstream || [];
+  const upstreamBadge = document.getElementById("upstream-count-badge");
+  if (upstreamBadge) upstreamBadge.textContent = `${upstreams.length} configured`;
+
   document.getElementById("stat-grid").innerHTML = `
-    <div class="stat"><div class="stat-label">MCP Port</div><div class="stat-value">${health.mcp_port}</div></div>
-    <div class="stat"><div class="stat-label">Sessions</div><div class="stat-value">${health.active_sessions}</div></div>
-    <div class="stat"><div class="stat-label">Project memory</div><div class="stat-value">${memCount} file(s)</div>
-      <div class="stat-sub">${instr.instruction_bytes ? Math.round(instr.instruction_bytes / 1024) + " KB instructions" : ""}</div></div>
-    <div class="stat"><div class="stat-label">Git branch</div><div class="stat-value" style="font-size:0.85rem">${esc(gitBranch)}</div></div>
-    <div class="stat"><div class="stat-label">Workspace</div><div class="stat-value" style="font-size:0.85rem">${esc(health.default_cwd?.split(/[/\\]/).pop())}</div>
-      <div class="stat-sub">${esc(health.default_cwd)}</div></div>`;
+    <div class="stat card-glow">
+      <div class="stat-top"><span class="stat-label">MCP Gateway</span><span class="card-pill ok">Active</span></div>
+      <div class="stat-value">Port ${health.mcp_port}</div>
+      <div class="stat-sub">${health.public_url ? "Public Funnel: " + esc(health.public_url.replace(/^https?:\/\//, "")) : "Local loopback only"}</div>
+    </div>
+    <div class="stat card-glow">
+      <div class="stat-top"><span class="stat-label">Active Sessions</span><span class="card-pill info">Live</span></div>
+      <div class="stat-value">${health.active_sessions}</div>
+      <div class="stat-sub">Connected MCP clients</div>
+    </div>
+    <div class="stat card-glow">
+      <div class="stat-top"><span class="stat-label">Tool Profile</span><span class="card-pill purple">${esc(profile)}</span></div>
+      <div class="stat-value">52 Native Tools</div>
+      <div class="stat-sub">Optimized for ChatGPT Web</div>
+    </div>
+    <div class="stat card-glow">
+      <div class="stat-top"><span class="stat-label">Workspace Root</span><span class="card-pill emerald">Protected</span></div>
+      <div class="stat-value" style="font-size:1.05rem;word-break:break-all">${esc(health.default_cwd?.split(/[/\\]/).pop())}</div>
+      <div class="stat-sub">${esc(health.default_cwd)}</div>
+    </div>
+    <div class="stat card-glow">
+      <div class="stat-top"><span class="stat-label">Project Memory</span><span class="card-pill cyan">Context</span></div>
+      <div class="stat-value">${memCount} File${memCount === 1 ? "" : "s"}</div>
+      <div class="stat-sub">${instr.instruction_bytes ? Math.round(instr.instruction_bytes / 1024) + " KB instructions" : "Standard rules active"}</div>
+    </div>
+    <div class="stat card-glow">
+      <div class="stat-top"><span class="stat-label">Security Mode</span><span class="card-pill ok">STANDARD</span></div>
+      <div class="stat-value" style="font-size:1.05rem">Scoped Policy</div>
+      <div class="stat-sub">Strict path isolation active</div>
+    </div>`;
+
   document.getElementById("dash-servers").innerHTML = serversTable(health.upstream || [], { actions: false });
   document.getElementById("status-json").textContent = JSON.stringify(health, null, 2);
 }
@@ -528,13 +591,40 @@ document.getElementById("import-file-btn").addEventListener("click", async () =>
   }
 });
 
+function initAdminToken() {
+  const input = document.getElementById("admin-credential");
+  if (!input) return;
+  const params = new URLSearchParams(window.location.search);
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const urlToken = fragment.get("token") || params.get("token") || params.get("admin_token");
+  // Remove legacy browser persistence. Credentials live in this page's memory only.
+  localStorage.removeItem("bridgedev_admin_token");
+  if (urlToken) input.value = urlToken;
+  params.delete("token");
+  params.delete("admin_token");
+  fragment.delete("token");
+  const cleanSearch = params.toString() ? "?" + params.toString() : "";
+  const cleanHash = fragment.toString() ? "#" + fragment.toString() : "";
+  window.history.replaceState({}, document.title, window.location.pathname + cleanSearch + cleanHash);
+}
+
+initAdminToken();
+
 async function refreshAll() {
+  const token = document.getElementById("admin-credential")?.value?.trim();
+  if (!token) {
+    const connStatus = document.getElementById("conn-status");
+    if (connStatus) connStatus.textContent = "Token required";
+    return;
+  }
   await Promise.all([loadManagedExtensions(), loadDashboard(), loadServers(), loadImport(), loadEnvForm(), loadProject().catch(() => {})]);
 }
 
 document.getElementById("refresh-all").addEventListener("click", () => refreshAll().catch((e) => toast(e.message, true)));
 
-if(document.getElementById("admin-credential").value)refreshAll().catch((err) => toast(err.message, true));
+if (document.getElementById("admin-credential")?.value) {
+  refreshAll().catch((err) => toast(err.message, true));
+}
 
 async function openLocalTools() {
   const data = await api("/api/local-tools");

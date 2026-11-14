@@ -18,12 +18,16 @@ try{
  browser=spawn(binary,['--headless=new','--disable-gpu','--disable-background-networking','--disable-component-update','--disable-sync','--disable-breakpad','--no-first-run','--password-store=basic','--disable-default-apps','--disable-extensions','--remote-debugging-port=0','--user-data-dir='+profile,'--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1','--window-size=1280,900','about:blank'],{env:{PATH:process.env.PATH,HOME:root,XDG_CONFIG_HOME:path.join(root,'browser-config'),XDG_CACHE_HOME:path.join(root,'browser-cache'),TMPDIR:os.tmpdir()},stdio:['ignore','ignore','pipe'],detached:process.platform!=='win32'});
  browser.stderr.on('data',b=>logs+=b);
  const debugPort=await waitFor(async()=>Number((await fs.readFile(path.join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0]));
- const target=await (await fetch(`http://127.0.0.1:${debugPort}/json/new?http://127.0.0.1:${adminPort}/ui/`,{method:'PUT'})).json();
+ const target=await (await fetch(`http://127.0.0.1:${debugPort}/json/new?`+encodeURIComponent(`http://127.0.0.1:${adminPort}/ui/#token=${admin}`),{method:'PUT'})).json();
  ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true});});let next=0;const pending=new Map();
  ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.id&&pending.has(data.id)){const {resolve,reject}=pending.get(data.id);pending.delete(data.id);data.error?reject(Error(JSON.stringify(data.error))):resolve(data.result);}});
  const command=(method,params={})=>new Promise((resolve,reject)=>{const id=++next;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
  const evaluate=async(expression)=>{const result=await command('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));return result.result.value;};
  await waitFor(()=>evaluate('document.readyState === "complete" && typeof refreshAll === "function" && Boolean(document.getElementById("admin-credential"))'));
+ assert.equal(await evaluate('window.location.hash'), '');
+ assert.equal(await evaluate('window.location.search'), '');
+ assert.equal(await evaluate('localStorage.getItem("bridgedev_admin_token")'), null);
+ assert.equal(await evaluate('document.getElementById("admin-credential").value'), admin);
  await evaluate(`document.getElementById('admin-credential').value=${JSON.stringify(admin)};document.querySelector('[data-tab="extensions"]').click();refreshAll()`);
  await evaluate(`document.getElementById('extension-source').value=${JSON.stringify(source)};document.getElementById('extension-discover').click()`);
  await waitFor(()=>evaluate('!document.getElementById("extension-approve").hidden'));
@@ -31,8 +35,8 @@ try{
  await evaluate('document.getElementById("extension-approve").click()');
  await waitFor(()=>evaluate('document.getElementById("extension-installed").textContent.includes("instructions:guide")'));
  assert.match(await evaluate('document.getElementById("extension-result").textContent'),/Applied/);
- const screenshot=await command('Page.captureScreenshot',{format:'png'});await fs.writeFile(path.join(os.tmpdir(),'bridge-admin-browser.png'),Buffer.from(screenshot.data,'base64'));
- console.log('Admin browser: authenticated login, discovery, exact preview, apply and installed state PASS; screenshot in temporary directory');
+ const screenshot=await command('Page.captureScreenshot',{format:'png'});await fs.writeFile(path.join(root,'admin-browser.png'),Buffer.from(screenshot.data,'base64'));
+ console.log('Admin browser: authenticated login, discovery, exact preview, apply and installed state PASS; fragment removed and credentials not persisted');
 }finally{
  ws?.close();
  if(gateway&&gateway.exitCode===null){const exited=new Promise(resolve=>gateway.once('exit',resolve));await fetch(`http://127.0.0.1:${adminPort}/api/lifecycle/stop`,{method:'POST',headers:{Authorization:'Bearer '+admin,'Content-Type':'application/json',Connection:'close'},body:'{}'}).catch(()=>gateway.kill());await exited;}

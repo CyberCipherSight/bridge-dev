@@ -121,6 +121,10 @@ with patch.object(c,'authorize',return_value=auth),patch.object(c,'protected'),p
     try: submit({**request,'argv':['/bin/sh','-c','different']})
     except RuntimeError: pass
     else: raise AssertionError('Idempotency key permitted different command')
+    with patch.dict(os.environ,{'BRIDGEDEV_CONTROLLER_CALLER_UID':'4294967294'}):
+        try: c.dispatch(config,'status',[])
+        except RuntimeError as error: assert 'Caller is not an installed controller client' in str(error)
+        else: raise AssertionError('Unregistered client accepted')
     # Real cross-process flock serializes duplicate submissions; no real systemd calls.
     queue=multiprocessing.get_context('fork').Queue()
     def concurrent():

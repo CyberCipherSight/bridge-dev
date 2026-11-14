@@ -1,3 +1,4 @@
+import {diagnosticCommand,diagnosticEnvironment,verifyDiagnostic,executeDiagnostic} from "../lib/diagnostic-command.js";
 import {childEnvironment} from "../lib/child-environment.js";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import { executeHostCommand } from "../lib/host-controller.js";
 import { executionAuthority } from "../lib/execution-authority.js";
 import {
   bootstrapShellSession,
+  shutdownShellCommands,
   execInShellSession,
   getShellStatus,
   resetShellSession,
@@ -30,6 +32,7 @@ interface ManagedProcess {
   stderr: string[];
   exitCode: number | null;
   signal: NodeJS.Signals | null;
+  timedOut?: boolean;
 }
 
 const processes = new Map<string, ManagedProcess>();
@@ -42,6 +45,17 @@ function appendLog(lines: string[], data: Buffer): void {
     const removed = lines.shift();
     total -= removed?.length || 0;
   }
+}
+
+function killOwnedProcess(item:ManagedProcess,signal:NodeJS.Signals,afterExit=false):void{
+  if(!afterExit&&(item.exitCode!==null||item.signal!==null))return;
+  if(process.platform!=="win32"&&item.child.pid){try{process.kill(-item.child.pid,signal);}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")throw error;}}
+  else if(!afterExit){item.child.kill(signal);if(item.child.pid)spawn("taskkill",["/PID",String(item.child.pid),"/T",...(signal==="SIGKILL"?["/F"]:[])],{stdio:"ignore",windowsHide:true}).on("error",()=>{});}
+}
+export async function shutdownShellProcesses():Promise<void>{
+ shutdownShellCommands();
+ for(const item of processes.values())killOwnedProcess(item,"SIGKILL");
+ await Promise.all([...processes.values()].filter(p=>p.child.exitCode===null&&p.child.signalCode===null).map(p=>new Promise<void>(resolve=>p.child.once("close",()=>resolve()))));
 }
 
 export function registerShellTools(server: McpServer, defaultCwd: string, timeoutSec: number): void {
@@ -69,7 +83,8 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
       }
       requireCommandAllowed(command);
       const policy = getSecurityPolicy();
-      const authCheck = policy.authorizeCommand(command, auth_token);
+      const direct=diagnosticCommand(command);
+      const authCheck = direct?{allowed:true,operationClass:"read_only" as const}:policy.authorizeCommand(command, auth_token);
       if (!authCheck.allowed) {
         await audit({ tool: "run_command", action: "command", target: command, status: "blocked", details: { reason: authCheck.reason, class: authCheck.operationClass } });
         return toolResult("run_command", {
@@ -86,7 +101,7 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
         });
       }
       const cwdOverride = working_directory ? await validatePath(working_directory) : undefined;
-      const result = await execInShellSession(command, defaultCwd, timeoutSec * 1000, cwdOverride);
+      const result = direct ? await executeDiagnostic(direct,cwdOverride||getShellStatus().cwd||defaultCwd,timeoutSec*1000) : await execInShellSession(command, defaultCwd, timeoutSec * 1000, cwdOverride);
       await audit({
         tool: "run_command",
         action: "command",
@@ -94,7 +109,7 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
         status: result.exit_code === 0 ? "ok" : "error",
         details: { command, exit_code: result.exit_code, class: authCheck.operationClass },
       });
-      return toolResult("run_command", { ...result, operation_class: authCheck.operationClass }, {
+      return toolResult("run_command", { ...result, command, operation_class: authCheck.operationClass }, {
         ok: result.exit_code === 0,
         summary: `exit ${result.exit_code} in ${result.cwd}`,
       });
@@ -140,15 +155,17 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
       inputSchema: {
         command: z.string(),
         working_directory: z.string().optional(),
+        max_runtime_seconds: z.number().min(1).max(86400).optional().describe("Optional owned-process deadline; no permanent service is created"),
         auth_token: z.string().optional().describe("Authorization token for privileged/high-risk commands"),
       },
 
       annotations: toolAnnotations("command"),
     },
-    async ({ command, working_directory, auth_token }) => {
+    async ({ command, working_directory, max_runtime_seconds, auth_token }) => {
       requireCommandAllowed(command);
       const policy = getSecurityPolicy();
-      const authCheck = policy.authorizeCommand(command, auth_token);
+      const direct=diagnosticCommand(command);
+      const authCheck = direct?{allowed:true,operationClass:"read_only" as const}:policy.authorizeCommand(command, auth_token);
       if (!authCheck.allowed) {
         await audit({ tool: "start_process", action: "start", target: command, status: "blocked", details: { reason: authCheck.reason, class: authCheck.operationClass } });
         return toolResult("start_process", {
@@ -162,7 +179,7 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
       const cwd = working_directory ? await validatePath(working_directory) : getShellStatus().cwd || defaultCwd;
       let shell = "bash";
       let effectiveCommand = command;
-      let args = ["-lc", effectiveCommand];
+      let args = ["--noprofile", "--norc", "-c", effectiveCommand];
 
       if (process.platform === "win32") {
         const winShellInfo = getWinShell();
@@ -173,10 +190,12 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
         args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", effectiveCommand];
       }
 
-      const child = spawn(shell, args, {
+      if(direct)verifyDiagnostic(direct);
+      const child = spawn(direct?.executable||shell, direct?.args||args, {
         cwd,
         windowsHide: true,
-        env: {
+        detached: process.platform!=="win32",
+        env: direct?diagnosticEnvironment():{
           ...childEnvironment(),
           CI: "true",
           PAGER: "cat",
@@ -199,10 +218,16 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
       processes.set(id, item);
       child.stdout.on("data", (d: Buffer) => appendLog(item.stdout, d));
       child.stderr.on("data", (d: Buffer) => appendLog(item.stderr, d));
-      child.on("close", (code, signal) => {
+      let timer:ReturnType<typeof setTimeout>|undefined;
+      child.on("error",error=>{item.exitCode=127;appendLog(item.stderr,Buffer.from(error.message));});
+      child.on("exit", (code, signal) => {
+        if(timer)clearTimeout(timer);
         item.exitCode = code;
         item.signal = signal;
+        killOwnedProcess(item,"SIGKILL",true);
       });
+      if(max_runtime_seconds)timer=setTimeout(()=>{item.timedOut=true;killOwnedProcess(item,"SIGKILL");},max_runtime_seconds*1000);
+      await new Promise<void>((resolve,reject)=>{child.once("spawn",()=>resolve());child.once("error",reject);});
       await audit({ tool: "start_process", action: "start", target: cwd, status: "ok", details: { id, command } });
       return toolResult("start_process", { id, pid: child.pid, command, cwd, started_at: item.startedAt }, {
         summary: `started ${id}`,
@@ -256,6 +281,7 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
         running: item.exitCode === null && item.signal === null,
         exit_code: item.exitCode,
         signal: item.signal,
+        timed_out: item.timedOut===true,
         stdout: item.stdout.join("").slice(-tail_chars),
         stderr: item.stderr.join("").slice(-tail_chars),
       };
@@ -278,7 +304,7 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
       if (item.exitCode !== null || item.signal !== null) {
         return toolResult("stop_process", { id, already_exited: true }, { summary: `${id} already exited` });
       }
-      item.child.kill(force ? "SIGKILL" : "SIGTERM");
+      killOwnedProcess(item,force ? "SIGKILL" : "SIGTERM");
       await audit({ tool: "stop_process", action: "stop", target: item.cwd, status: "ok", details: { id, force } });
       return toolResult("stop_process", { id, force }, { summary: `stop sent to ${id}` });
     }

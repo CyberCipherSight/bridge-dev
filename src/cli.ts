@@ -10,6 +10,7 @@ import {extensionCli,operatorApi} from "./lib/extension-cli.js";
 import {controllerCli} from "./lib/controller-cli.js";
 import {parseCliArguments} from "./lib/cli-arguments.js";
 import {hostControllerAvailable} from "./lib/host-controller.js";
+import {tailscaleEndpoint,enableTailscaleFunnel} from "./lib/tailscale.js";
 import { execSync, spawnSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -110,13 +111,7 @@ function getActiveMode(): { mode: string; detail: string } {
 }
 
 function getTailscaleEndpoint(): string | null {
-  if (getRuntimeMode() === "portable") return null;
-  try {
-    const out = execSync("tailscale funnel status 2>/dev/null", { encoding: "utf8" });
-    const match = out.match(/https:\/\/[a-zA-Z0-9.-]+\.ts\.net/);
-    if (match) return match[0];
-  } catch {}
-  return null;
+  return tailscaleEndpoint(Number(process.env.PORT || 3000));
 }
 
 function getMappedProjects(): string[] {
@@ -168,7 +163,7 @@ async function cmdStatus() {
 
 async function cmdConnect(showToken = false) {
   const funnel = getTailscaleEndpoint();
-  const baseUrl = process.env.BRIDGEDEV_PUBLIC_URL || funnel || `http://127.0.0.1:${process.env.PORT || 3000}`;
+  const baseUrl = funnel || `http://127.0.0.1:${process.env.PORT || 3000}`;
   let token = "";
   if (showToken) {
     const envFile = process.env.POLICYGATE_ENV_FILE || path.join(getActivePath("etc"), "service.env");
@@ -183,7 +178,7 @@ async function cmdConnect(showToken = false) {
   console.log("Endpoint : " + endpoint);
   console.log("Protocol : Streamable HTTP MCP");
   console.log("Auth     : Legacy URL token shown; /mcp also accepts a Bearer token");
-  console.log("Admin UI : http://127.0.0.1:3001 (local only, separate admin token)");
+  console.log(`Admin UI : http://127.0.0.1:${process.env.ADMIN_PORT || 3001} (local only, separate admin token)`);
   console.log("");
   console.log("ChatGPT: configure the custom MCP connector URL to the endpoint above.");
   console.log("Codex/Claude Code: use this MCP server URL in the client configuration:");
@@ -213,11 +208,16 @@ function cmdAccess(): void {
   }
   const port = process.env.PORT || "3000";
   const adminPort = process.env.ADMIN_PORT || "3001";
-  console.log("BridgeDev local access");
-  console.log("Admin UI    : http://127.0.0.1:" + adminPort + "/ui/");
-  console.log("Admin token : " + admin);
-  console.log("MCP URL     : http://127.0.0.1:" + port + "/mcp/" + mcp);
-  console.log("Keep these credentials private. For ChatGPT Web, configure a separate HTTPS MCP route.");
+  const funnel = getTailscaleEndpoint();
+  const baseMcpUrl = funnel || `http://127.0.0.1:${port}`;
+  const connectionUrl = `${baseMcpUrl}/mcp/${mcp}`;
+  const dashboardUrl = `http://127.0.0.1:${adminPort}/ui/#token=${admin}`;
+
+  console.log("BridgeDev Access\n");
+  console.log("Connection URL:");
+  console.log(connectionUrl + "\n");
+  console.log("Dashboard URL:");
+  console.log(dashboardUrl);
 }
 
 function runOperator(args: string[]): boolean {
@@ -364,7 +364,12 @@ async function cmdStop() {
 }
 
 async function cmdRestart() {
-  if (getRuntimeMode() === "portable") {await cmdStop();await new Promise(resolve=>setTimeout(resolve,500));await import("./index.js");return;}
+  if (getRuntimeMode() === "portable") {
+    await cmdStop();
+    await new Promise(resolve=>setTimeout(resolve,500));
+    await import("./index.js");
+    return;
+  }
   if (process.platform !== "linux") {
     console.error("Service restart is Linux systemd-only. Restart foreground processes manually.");
     process.exitCode = 1;
@@ -405,6 +410,14 @@ async function cmdDoctor() {
   if(getRuntimeMode()==="portable"){
     const health=await fetchHealth(Number(process.env.PORT||3000));
     add("MCP endpoint",health?"OK":"UNVERIFIED",health?"authenticated MCP gateway reachable":"configured gateway port is unavailable");
+    const admin=await new Promise<number>((resolve)=>{
+      const req=http.get(`http://127.0.0.1:${process.env.ADMIN_PORT || 3001}/health`,{timeout:1500},res=>{res.resume();resolve(res.statusCode||0);});
+      req.on("error",()=>resolve(0));req.on("timeout",()=>{req.destroy();resolve(0);});
+    });
+    add("Admin endpoint",admin===401?"OK":admin===200?"UNVERIFIED":"INFO",
+      admin===401?"reachable, unauthenticated request denied":admin===200?"reachable, but unauthenticated health allowed":"not running or unreachable");
+    const funnel=getTailscaleEndpoint();
+    add("Public tunnel","INFO",funnel||"not configured");
     const {McpUpstreamManager}=await import("./lib/mcp-upstream-manager.js");const manager=new McpUpstreamManager();await manager.init();
     add("Optional providers",manager.initializationError?"UNVERIFIED":"OK",manager.initializationError||manager.listServerConfigs().length+" registered; no providers executed");
     try{const proof=verifyAuditFile(path.join(portableStateDir(),"audit.jsonl"));add("Application audit","OK",proof.entries+" chained entries; OS append-only protection not claimed");}catch(error){add("Application audit","UNVERIFIED",String(error));}
@@ -421,7 +434,7 @@ async function cmdDoctor() {
   add("MCP endpoint",health?"OK":"UNVERIFIED",health?"HTTP 200, sessions: "+(health.activeSessions??0):"port 3000 unavailable");
   if (process.platform==="linux") {
     const admin=await new Promise<number>((resolve)=>{
-      const req=http.get("http://127.0.0.1:3001/health",{timeout:1500},res=>{res.resume();resolve(res.statusCode||0);});
+      const req=http.get(`http://127.0.0.1:${process.env.ADMIN_PORT || 3001}/health`,{timeout:1500},res=>{res.resume();resolve(res.statusCode||0);});
       req.on("error",()=>resolve(0));req.on("timeout",()=>{req.destroy();resolve(0);});
     });
     add("Admin endpoint",admin===401?"OK":admin===200?"UNVERIFIED":"UNVERIFIED",
@@ -581,9 +594,16 @@ async function main() {
       break;
     case "start":
     case "serve":
-    case "start-server":
-      await import("./index.js");
+    case "start-server": {
+      const port = process.env.PORT || "3000";
+      const wantFunnel = args.includes("--funnel") ||
+        process.env.BRIDGEDEV_FUNNEL === "true" ||
+        process.env.BRIDGEDEV_TRANSPORT === "tailscale";
+      // Verify the local gateway is healthy before any explicitly requested exposure.
+      const gateway=await import("./index.js");
+      if(wantFunnel){await gateway.waitForGatewayReady();enableTailscaleFunnel(Number(port));}
       break;
+    }
     case "help":
     case "--help":
     case "-h":

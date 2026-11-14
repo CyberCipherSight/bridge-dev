@@ -15,7 +15,7 @@ try{
  await fs.writeFile(config.policy,JSON.stringify({profile:'standard'}));
  await fs.writeFile(config.public_key,keys.publicKey);
  const configFile=path.join(root,'controller.json');await fs.writeFile(configFile,JSON.stringify(config));
- const check=(input={},ok=true)=>{const r=spawnSync(process.execPath,['scripts/controller-authorize.mjs',configFile],{input:JSON.stringify(input),encoding:'utf8',timeout:10000});assert.equal(r.status,ok?0:1,r.stderr);return r.status===0?JSON.parse(r.stdout):null;};
+ const check=(input={},ok=true)=>{const r=spawnSync(process.execPath,['scripts/controller-authorize.mjs',configFile],{input:JSON.stringify(input),encoding:'utf8',timeout:10000});assert.equal(r.status,ok?0:1,r.stderr);if(!ok)assert.match(r.stderr,/CONTROLLER_AUTHORIZATION_REQUIRED/);return r.status===0?JSON.parse(r.stdout):null;};
  const makeLease=async(expires=Date.now()+60_000)=>{const lease={mode:'dangerous',expires_at:expires,nonce:randomUUID(),scope:'host-root-v1',...(expires===null?{lifetime:'until_off'}:{})};lease.signature=sign(null,Buffer.from(JSON.stringify(lease)),keys.privateKey).toString('base64');await fs.writeFile(config.lease,JSON.stringify(lease));return lease;};
  let lease=await makeLease();await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard'}));check({},false);
  check({operator_activation:true});await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard',nonce:lease.nonce,expires:lease.expires_at}));assert.equal(check().kind,'yolo');
@@ -26,6 +26,15 @@ try{
  await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard'}));check({},false); // revocation defeats replay of still-signed lease
  lease=await makeLease(Date.now()-1);await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard',nonce:lease.nonce,expires:lease.expires_at}));check({},false);
  lease=await makeLease();lease.expires_at+=1000;await fs.writeFile(config.lease,JSON.stringify(lease));check({},false);
+ // Each invalid fixture fails closed with the public authorization reason.
+ lease=await makeLease();await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard',nonce:'wrong-nonce',expires:lease.expires_at}));check({},false);
+ for(const scope of ['other-scope',undefined]){
+  const invalid={mode:'dangerous',expires_at:Date.now()+60_000,nonce:randomUUID(),...(scope?{scope}: {})};invalid.signature=sign(null,Buffer.from(JSON.stringify(invalid)),keys.privateKey).toString('base64');
+  await fs.writeFile(config.lease,JSON.stringify(invalid));await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard',nonce:invalid.nonce,expires:invalid.expires_at}));check({},false);
+ }
+ const otherKeys=generateKeyPairSync('ed25519');lease=await makeLease();lease.signature=sign(null,Buffer.from(JSON.stringify({mode:lease.mode,expires_at:lease.expires_at,nonce:lease.nonce,scope:lease.scope})),otherKeys.privateKey).toString('base64');await fs.writeFile(config.lease,JSON.stringify(lease));check({},false);
+ await fs.writeFile(config.lease,'{malformed');check({},false);
+ await fs.writeFile(config.activation_file,'{malformed');check({},false);
  // A signed until-off lease is revoked by changing its protected nonce.
  lease=await makeLease(null);
  await fs.writeFile(config.activation_file,JSON.stringify({mode:'standard',nonce:lease.nonce,expires:null,lifetime:'until_off'}));

@@ -1,4 +1,5 @@
 import path from "node:path";
+import {diagnosticCommand} from "./diagnostic-command.js";
 import type { PolicyConfig } from "./policy-gateway.js";
 import { checkPath } from "./policy-paths.js";
 
@@ -221,6 +222,15 @@ export function analyzeCommand(command:string, config:PolicyConfig, policyFile:s
     return {deny:"operator admin API access",approval:false,reasons:[]};
   const reasons:string[]=[];let approval=false;
   try {
+    const direct=diagnosticCommand(command);
+    if(direct){
+      const argv=tokenizeShell(command).map(t=>t.text);
+      const normalized=argv.join(" "),bare=[path.basename(argv[0]),...argv.slice(1)].join(" ");
+      if(config.denied_commands.some(rule=>[normalized,bare].some(value=>value===rule||value.startsWith(rule+" "))))return {deny:"operator-denied command",approval:false,reasons:[]};
+      checkPath(startCwd,"R",config,policyFile);
+      const explicit=config.approval_commands.some(rule=>[normalized,bare].some(value=>value===rule||value.startsWith(rule+" ")));
+      return {approval:explicit,reasons:explicit?["operator approval command"]:["verified argv-only diagnostic"]};
+    }
     const toks=tokenizeShell(command), groups=segmentCommand(toks);
     let cwd=startCwd;
     for (let index=0;index<groups.length;index++) {

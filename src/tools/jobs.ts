@@ -14,7 +14,7 @@ export function registerJobTools(server: McpServer, defaultCwd: string): void {
       id: z.string().optional(),
       command: z.string().optional(),
       working_directory: z.string().optional(),
-      max_runtime_seconds: z.number().int().min(60).max(86400).optional().default(7200),
+      max_runtime_seconds: z.number().int().min(1).max(86400).optional().default(7200),
       max_log_bytes: z.number().int().min(200).max(100000).optional().default(10000),
       confirm_stop: z.boolean().optional().default(false),
       auth_token: z.string().optional(),

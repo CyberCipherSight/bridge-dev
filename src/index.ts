@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {shutdownShellProcesses} from "./tools/shell.js";
 
 import "dotenv/config";
 import express from "express";
@@ -351,6 +352,7 @@ async function shutdown(code = 0): Promise<void> {
   if (stopping) return;
   stopping = true;
   sessionManager.stopCleanup();
+  await shutdownShellProcesses();
   await sessionManager.close();
   try{await upstreamManager.shutdown();}catch(error){console.error("Provider cleanup error during shutdown: "+String(error));code=1;}
   adminServer.closeAllConnections();
@@ -366,4 +368,13 @@ server.on("error", () => { void shutdown(1); });
 // Keep an interactive foreground server alive when stdin is attached.
 if (process.stdin.isTTY) {
   process.stdin.resume();
+}
+
+/** Optional CLI exposure must wait for both sockets owned by this process. */
+export async function waitForGatewayReady():Promise<void>{
+  await Promise.all([server,adminServer].map(listener=>new Promise<void>((resolve,reject)=>{
+    if(listener.listening)return resolve();
+    listener.once("listening",()=>resolve());listener.once("error",reject);
+  })));
+  if(stopping)throw Error("Gateway stopped during startup; Funnel unchanged");
 }

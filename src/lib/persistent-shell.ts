@@ -19,6 +19,8 @@ let sessionInitializedAt: string | null = null;
 let persistenceRoot: string | null = null;
 const history: string[] = [];
 const MAX_HISTORY = 50;
+const activeCommands=new Set<()=>void>();
+export function shutdownShellCommands():void{for(const stop of activeCommands)stop();}
 
 export function setShellPersistenceRoot(workspaceRoot: string): void {
   persistenceRoot = path.resolve(workspaceRoot);
@@ -192,7 +194,7 @@ function runOnce(command: string, cwd: string, timeoutMs: number): Promise<Shell
   return new Promise((resolve, reject) => {
     let effectiveCommand = command;
     let shell = "bash";
-    let args: string[] = ["-lc", effectiveCommand];
+    let args: string[] = ["--noprofile", "--norc", "-c", effectiveCommand];
 
     if (process.platform === "win32") {
       const winShellInfo = getWinShell();
@@ -205,6 +207,7 @@ function runOnce(command: string, cwd: string, timeoutMs: number): Promise<Shell
 
     const child = spawn(shell, args, {
       cwd,
+      detached: process.platform !== "win32",
       windowsHide: true,
       env: {
         ...childEnvironment(),
@@ -226,13 +229,20 @@ function runOnce(command: string, cwd: string, timeoutMs: number): Promise<Shell
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      killTree();
     }, timeoutMs);
+    function killTree(){
+      if(process.platform!=="win32"&&child.pid){try{process.kill(-child.pid,"SIGKILL");}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")throw error;}}
+      else {child.kill("SIGKILL");if(child.pid)spawn("taskkill",["/PID",String(child.pid),"/T","/F"],{stdio:"ignore",windowsHide:true}).on("error",()=>{});}
+    }
+    activeCommands.add(killTree);
+    child.once("exit",()=>{if(process.platform!=="win32")killTree();});
 
-    child.stdout?.on("data", (d: Buffer) => (stdout += d.toString()));
-    child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
+    child.stdout?.on("data", (d: Buffer) => (stdout = (stdout + d.toString()).slice(-1048576)));
+    child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-1048576)));
     child.on("close", (code) => {
       clearTimeout(timer);
+      activeCommands.delete(killTree);
       if (timedOut) {
         reject(new Error(`Command timed out after ${timeoutMs / 1000}s`));
         return;
@@ -248,6 +258,7 @@ function runOnce(command: string, cwd: string, timeoutMs: number): Promise<Shell
     });
     child.on("error", (err) => {
       clearTimeout(timer);
+      activeCommands.delete(killTree);
       reject(err);
     });
   });

@@ -40,7 +40,7 @@ try{
  const nativeGit=await client.callTool({name:'git_status',arguments:{}});assert.equal(nativeGit.structuredContent?.ok,true,JSON.stringify(nativeGit));assert.match(JSON.stringify(nativeGit.structuredContent.data),/visible.txt/);
  await client.callTool({name:'system_context',arguments:{docs:['agents','current_state']}});
  const nativeWrite=await client.callTool({name:'write_file',arguments:{path:'created.txt',content:'native write fixture'}});assert.equal(nativeWrite.structuredContent.ok,true);assert.equal(await fs.readFile(path.join(work,'created.txt'),'utf8'),'native write fixture');
- const commandCall={name:'run_command',arguments:{command:'echo portable-native-command'}};
+ const commandCall={name:'run_command',arguments:{command:'echo portable-native-command; echo reviewed-shell'}};
  const deniedCommand=await client.callTool(commandCall);assert.equal(deniedCommand.isError,true);assert.match(JSON.stringify(deniedCommand),/POLICYGATE_APPROVAL_REQUIRED/);
  const requestFiles=(await fs.readdir(approvalDir)).filter(name=>name.endsWith('.request.json'));const commandRequests=await Promise.all(requestFiles.map(async name=>JSON.parse(await fs.readFile(path.join(approvalDir,name),'utf8'))));const commandRequest=commandRequests.find(request=>request.tool==='run_command'&&request.args.command===commandCall.arguments.command);assert.ok(commandRequest);
  const signature=sign(null,Buffer.from(approvalPayload(commandRequest)),keys.privateKey).toString('base64');await fs.writeFile(path.join(approvalDir,commandRequest.id+'.approved.json'),JSON.stringify({...commandRequest,signature}));

@@ -63,9 +63,8 @@ append-only audit/anchor and temporary YOLO require separate provisioning. Exist
 legacy names/paths remain compatible. [Deployment](SYSTEMD_DEPLOYMENT.md) and
 [policy](POLICY_GATEWAY.md) describe those additional boundaries.
 
-This task did not install services, modify live code/configuration, rotate
-credentials, touch Funnel/Tailscale or change VMs/laptop settings. Source pushes do
-not constitute deployment or privileged-host acceptance.
+Source pushes do not constitute deployment or privileged-host acceptance.
+[Stabilization QA](FINAL_QA.md) separates current source, host and account gates.
 
 ## Android / Termux
 
