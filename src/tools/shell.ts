@@ -164,7 +164,7 @@ export function registerShellTools(server: McpServer, defaultCwd: string, timeou
     async ({ command, working_directory, max_runtime_seconds, auth_token }) => {
       requireCommandAllowed(command);
       const policy = getSecurityPolicy();
-      const direct=diagnosticCommand(command);
+      const plan=diagnosticCommand(command),direct=plan?.runtimeVersion?undefined:plan;
       const authCheck = direct?{allowed:true,operationClass:"read_only" as const}:policy.authorizeCommand(command, auth_token);
       if (!authCheck.allowed) {
         await audit({ tool: "start_process", action: "start", target: command, status: "blocked", details: { reason: authCheck.reason, class: authCheck.operationClass } });

@@ -26,6 +26,8 @@ try{
  for(const command of ['git --version','node --version','id -u','echo bridge-dev-qa']){const r=await client.callTool({name:'run_command',arguments:{command}});if(!r.structuredContent?.ok)failures.push({command,error:JSON.stringify(r)});}
  await assert.rejects(fs.stat(path.join(root,'shadow-executed')), {code:'ENOENT'});
  if(failures.length)throw Error('Ordinary diagnostics rejected: '+JSON.stringify(failures));
+ const runtimeVersion=await client.callTool({name:'run_command',arguments:{command:'node --version'}});assert.equal(runtimeVersion.structuredContent.data.stdout,process.version);
+ for(const [name,args]of[['start_process',{command:'node --version'}],['system_job',{action:'start',command:'node --version'}]]){const denied=await client.callTool({name,arguments:args});assert.match(JSON.stringify(denied),/POLICYGATE_APPROVAL_REQUIRED/);}
  const bg=await client.callTool({name:'start_process',arguments:{command:'sleep 0.2',max_runtime_seconds:2}});assert.ok(bg.structuredContent?.ok,JSON.stringify(bg));const id=bg.structuredContent.data.id;
  await new Promise(r=>setTimeout(r,350));const out=await client.callTool({name:'process_output',arguments:{id}});assert.equal(out.structuredContent.data.exit_code,0,JSON.stringify(out));
  const timed=await client.callTool({name:'start_process',arguments:{command:'sleep 10',max_runtime_seconds:1}});assert.ok(timed.structuredContent?.ok);

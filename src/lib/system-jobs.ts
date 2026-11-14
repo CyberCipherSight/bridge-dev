@@ -43,7 +43,7 @@ async function tailFile(file: string, maxBytes: number): Promise<string> {
   } finally { await handle.close(); }
 }
 export async function startJob(command: string, workingDirectory: string, maxRuntimeSeconds = 7200, authToken?: string) {
-  const direct=diagnosticCommand(command);
+  const plan=diagnosticCommand(command),direct=plan?.runtimeVersion?undefined:plan;
   const auth = direct?{allowed:true,error:undefined}:getSecurityPolicy().authorizeCommand(command, authToken);
   if (!auth.allowed) throw new Error(auth.error || "JOB_SECURITY_BLOCKED");
   if (command.trim().length === 0 || command.length > 12000) throw new Error("Invalid job command");

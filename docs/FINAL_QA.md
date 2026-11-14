@@ -23,10 +23,11 @@ work is intentionally integrated with the security corrections above.
 In STANDARD, exact supported diagnostics are `pwd`, `id`, `whoami`, `true`,
 `false`, `id -u`, `id -g`, `git --version`, `node --version`/`node -v`, literal
 `echo` arguments without options, and numeric `sleep` up to 120 seconds. Trusted
-POSIX system executables must be root-owned and not group/world writable. Node
-uses the running executable, with identity checks and a digest for user-owned
-runtimes. Explicit paths must resolve to that same executable. Windows supports
-the current Node diagnostic; other unavailable system forms retain review.
+POSIX system executables must be root-owned and not group/world writable. `node --version`/`node -v` report process.version from the already-running
+gateway without launching Node, including CI toolcache runtimes with writable
+mode bits. Node background execution still requires signed review. Explicit
+paths must resolve to a trusted system executable. Windows supports the inline
+Node diagnostic; other unavailable system forms retain review.
 
 Expansion, redirects, pipes, wrappers, interpreter evaluation and general
 build/test commands retain exact signed operator review. A command-name regex

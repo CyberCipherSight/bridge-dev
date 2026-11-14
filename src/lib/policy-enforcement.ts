@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import {diagnosticCommand} from "./diagnostic-command.js";
 import type { PolicyGate, PolicySession, PolicyAuthorization } from "./policy-gateway.js";
 import { classifyTool } from "./tool-classification.js";
 import { checkPath, pathsFromArgs } from "./policy-paths.js";
@@ -100,6 +101,9 @@ export async function enforcePolicy(gate:PolicyGate,session:PolicySession,tool:s
     if(["run_command","start_process","system_job"].includes(tool) && (tool!=="system_job" || args.action==="start")){
       const command=String(args.command??"");
       const analysis=analyzeCommand(command,config,gate.configPath,String(args.working_directory??cwd));
+      // Inline runtime metadata is only a run_command diagnostic. Background
+      // execution remains an actual executable launch and needs signed review.
+      if(tool!=="run_command"&&diagnosticCommand(command)?.runtimeVersion){analysis.approval=true;analysis.reasons.push("background runtime execution requires review");}
       if(analysis.deny)return deny(session,gate,"POLICYGATE_COMMAND_DENIED: "+analysis.deny+"; use safe tools or request operator review.");
       if(analysis.approval){approval=true;reasons.push(...analysis.reasons);}
       if(config.profile==="strict" && /\b(?:sudo|doas|su|pkexec)\b/.test(command))
