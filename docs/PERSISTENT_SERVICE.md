@@ -76,6 +76,12 @@ stopping production. The detached worker repeats this check immediately before
 cutover. Only the independent local operator can change the lease; service
 commands never switch modes automatically. Preserve an active YOLO installation
 until the operator explicitly authorizes a STANDARD maintenance window.
+If the running gateway rejects the protected environment file's Admin credential,
+the updater reports `SERVICE_ADMIN_CREDENTIAL_DRIFT` and refuses release changes.
+This can happen when the environment file changes after service startup; reconcile
+the running and persisted credentials using the independent local operator workflow.
+Never print tokens, rewrite them silently, or restart a gateway with mismatched
+credentials: doing so may disconnect existing MCP clients.
 
 A single exclusive update lock and persistent job UUID prevent blind duplicate
 updates. The on-demand `systemd-run --user` controller is independent of gateway

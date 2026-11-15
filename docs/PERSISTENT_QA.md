@@ -46,6 +46,10 @@ implementation used a separate main checkout.
 - Portable service update/rollback explicitly refuse an active Full System
   lease before release acceptance, and the detached worker checks again before
   cutover. This avoids running STANDARD-only destructive-denial probes under root.
+- An independently observed Admin HTTP 401 with the configured credential exposed
+  live credential drift (both Admin and MCP values differed from the running process).
+  The release updater now reports `SERVICE_ADMIN_CREDENTIAL_DRIFT` rather than
+  a generic unhealthy-Standard error. Neither token is disclosed or modified.
 
 ## Verification
 

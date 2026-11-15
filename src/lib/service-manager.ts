@@ -251,6 +251,8 @@ async function authHealth(c: ServiceConfig): Promise<any> {
     headers: { Authorization: "Bearer " + env.ADMIN_TOKEN },
     signal: AbortSignal.timeout(3000),
   });
+  if (response.status === 401)
+    throw Error("SERVICE_ADMIN_CREDENTIAL_DRIFT: running Admin endpoint rejected the protected configuration token; reconcile credentials locally before restarting");
   if (!response.ok) throw Error("SERVICE_ADMIN_HEALTH_FAILED");
   return response.json();
 }
@@ -262,7 +264,9 @@ async function requireStandardServiceMode(c: ServiceConfig): Promise<void> {
   let health: any;
   try {
     health = await authHealth(c);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("SERVICE_ADMIN_CREDENTIAL_DRIFT"))
+      throw error;
     throw Error("SERVICE_UPDATE_REQUIRES_HEALTHY_STANDARD_GATEWAY");
   }
   if (health.status !== "ok" || health.full_machine_access !== false)
