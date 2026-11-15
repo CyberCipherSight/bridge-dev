@@ -13,8 +13,10 @@ export async function controllerCli(args:string[],json:boolean):Promise<boolean>
     const script="/usr/local/libexec/bridge-dev/policygate-operator.mjs";
     if(!fs.existsSync(script))throw new Error("Independent operator script is not installed");
     const off=args[2]==="off";
-    if(!off&&args[2]!=="on")throw new Error("Usage: bridge-dev operator yolo on --duration 60 | off");
-    const call=spawnSync("/usr/bin/sudo",["--",process.execPath,script,"yolo",...(off?["--off"]:["--duration",flag("--duration")||"30"])],{stdio:"inherit"});
+    if(!off&&args[2]!=="on")throw new Error("Usage: bridge-dev operator yolo on [--duration <min>] | off");
+    const dur=flag("--duration");
+    const yoloArgs=off?["--off"]:(dur?["--duration",dur]:["--until-off"]);
+    const call=spawnSync("/usr/bin/sudo",["--",process.execPath,script,"yolo",...yoloArgs],{stdio:"inherit"});
     if(call.status!==0)throw new Error("Independent operator authorization required");return true;
   }
   if(group==="operator"&&action==="exec"){

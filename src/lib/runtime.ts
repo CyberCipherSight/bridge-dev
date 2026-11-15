@@ -51,9 +51,34 @@ export function platformCapabilities(platform: NodeJS.Platform = process.platfor
 }
 
 export function portableWorkspace(): string {
-  const raw = process.env.WORKSPACE_PATH?.split(";")[0]?.trim() || process.cwd();
+  const raw = process.env.WORKSPACE_PATH?.split(/[;,]/)[0]?.trim() || process.cwd();
   return path.resolve(raw);
 }
+
+export function portableWorkspaceRoots(): string[] {
+  const rawList: string[] = [];
+  if (process.env.BRIDGEDEV_WRITABLE_ROOTS) {
+    rawList.push(...process.env.BRIDGEDEV_WRITABLE_ROOTS.split(/[;,]/).map((p) => p.trim()).filter(Boolean));
+  }
+  if (process.env.EXTRA_WORKSPACE_PATHS) {
+    rawList.push(...process.env.EXTRA_WORKSPACE_PATHS.split(/[;,]/).map((p) => p.trim()).filter(Boolean));
+  }
+  if (process.env.WORKSPACE_PATH) {
+    rawList.push(...process.env.WORKSPACE_PATH.split(/[;,]/).map((p) => p.trim()).filter(Boolean));
+  }
+  if (rawList.length === 0) {
+    rawList.push(process.cwd());
+  }
+  const resolved = rawList.map((p) => {
+    try {
+      return fs.realpathSync.native(path.resolve(p));
+    } catch {
+      return path.resolve(p);
+    }
+  }).filter((p) => fs.existsSync(p));
+  return resolved.length ? Array.from(new Set(resolved)) : [fs.realpathSync.native(portableWorkspace())];
+}
+
 export function portableStateDir(): string {
   return path.resolve(process.env.BRIDGEDEV_STATE_DIR || path.join(os.homedir(), ".bridge-dev", "state"));
 }
@@ -62,17 +87,26 @@ export function makePortablePolicy(): PolicyConfig {
   // Match canonicalPath() on Windows and on macOS /var -> /private/var aliases.
   // A portable workspace must exist; never broaden permissions on a missing root.
   const workspace = fs.realpathSync.native(portableWorkspace());
+  const roots = portableWorkspaceRoots();
   const state = portableStateDir();
   const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const home = os.homedir();
   return {
     profile: "standard", dangerous_enabled: false,
     context_files: [],
-    writable_roots: [workspace],
+    writable_roots: roots,
     protected_paths: [state],
     secret_paths: [
       path.join(home, ".ssh"), path.join(home, ".gnupg"), path.join(home, ".aws"),
       path.join(home, ".kube"), path.join(home, ".config", "age"),
+      path.join(home, ".config", "BraveSoftware"),
+      path.join(home, ".mozilla"),
+      path.join(home, ".config", "google-chrome"),
+      path.join(home, ".config", "chromium"),
+      path.join(home, ".config", "keepassxc"),
+      path.join(home, "Sync", "KeePass"),
+      path.join(home, ".local", "share", "bridge-dev"),
+      path.join(home, ".config", "bridge-dev"),
     ],
     secret_names: [".env", ".env.*", "*.pem", "*.key", "id_*", "*token*", "credentials.json"],
     approval_paths: [],

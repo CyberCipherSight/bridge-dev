@@ -57,20 +57,26 @@ def main():
     for user in [args.operator_user,args.gateway_user]:
         if not user or not re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_-]*\$?',user) or pwd.getpwnam(user).pw_uid==0: raise RuntimeError('Explicit non-root operator and gateway users required')
     config=Path('/etc/local-coder-policygate/controller.json')
+    service_name = 'bridge-dev.service' if Path('/home/onyx/.config/systemd/user/bridge-dev.service').exists() else 'chatgpt-local-coder-policygate.service'
+    live_path = '/home/onyx/.local/share/bridge-dev/current' if Path('/home/onyx/.local/share/bridge-dev/current').exists() else '/opt/bridge-dev'
+    releases_path = '/home/onyx/.local/share/bridge-dev/releases' if Path('/home/onyx/.local/share/bridge-dev/releases').exists() else '/opt/bridge-dev-releases'
+    env_file = '/home/onyx/.config/bridge-dev/.env' if Path('/home/onyx/.config/bridge-dev/.env').exists() else '/etc/local-coder-policygate/service.env'
+    ledger_path = '/home/onyx/.local/share/bridge-dev/state/audit.jsonl' if Path('/home/onyx/.local/share/bridge-dev/state').exists() else '/var/log/local-coder-policygate/audit.jsonl'
     proposed={'public_key':'/etc/local-coder-policygate/operator-public.pem','lease':'/var/lib/local-coder-policygate/yolo-lease.json',
               'activation_file':'/var/lib/bridge-dev-operator/active-lease.json',
               'approvals':'/var/lib/local-coder-policygate/approvals','state':'/var/lib/bridge-dev-controller',
               'policy':'/etc/local-coder-policygate/policy.json','mode_file':'/var/lib/local-coder-policygate/mode.json',
-              'service':'chatgpt-local-coder-policygate.service','live':'/opt/bridge-dev','releases':'/opt/bridge-dev-releases',
-              'env_file':'/etc/local-coder-policygate/service.env','health':'http://127.0.0.1:3000/health',
-              'ledger':'/var/log/local-coder-policygate/audit.jsonl',
-              'preserve':['/etc/local-coder-policygate/service.env','/etc/local-coder-policygate/policy.json','/etc/local-coder-policygate/operator-public.pem',
-                          '/etc/local-coder-policygate/operator-private.pem','/etc/local-coder-policygate/audit-anchor.json','/etc/local-coder-policygate/mcp-upstream.json'],
+              'service':service_name,'live':live_path,'releases':releases_path,
+              'env_file':env_file,'health':'http://127.0.0.1:3000/health',
+              'ledger':ledger_path,
+              'preserve':[env_file,'/etc/local-coder-policygate/policy.json','/etc/local-coder-policygate/operator-public.pem',
+                          '/etc/local-coder-policygate/operator-private.pem'],
               'gateway_uid':pwd.getpwnam(args.gateway_user).pw_uid,
               'clients':[pwd.getpwnam(args.operator_user).pw_uid,pwd.getpwnam(args.gateway_user).pw_uid]}
     # Never rewrite existing operator configuration during upgrades.
     if config.exists():
         if json.loads(config.read_text())!=proposed: raise RuntimeError('Existing controller configuration differs; operator review required')
+    config.parent.mkdir(mode=0o755, exist_ok=True)
     safe_parents(config)
     state=Path(proposed['state']); state.mkdir(mode=0o700,exist_ok=True)
     safe_parents(state)
@@ -95,14 +101,28 @@ def main():
         payload=(source/'scripts'/name).read_bytes()
         if hashlib.sha256(payload).hexdigest()!=expected[name]: raise RuntimeError('Source changed during bootstrap')
         write_atomic(base/name,payload,0o644)
+    # Ensure policy directory and file exist
+    policy_path = Path(proposed['policy'])
+    policy_path.parent.mkdir(mode=0o755, exist_ok=True)
+    if not policy_path.exists():
+        write_atomic(policy_path, (json.dumps({'profile':'standard'}, indent=2) + '\n').encode(), 0o644)
+    # Ensure operator signing keypair exists
+    pubkey_path = Path(proposed['public_key'])
+    privkey_path = Path(str(pubkey_path).replace('public.pem', 'private.pem'))
+    if not pubkey_path.exists() or not privkey_path.exists():
+        subprocess.run(['node', str(base / 'policygate-operator.mjs'), 'keygen'],
+                       env={'PATH': '/usr/bin:/bin', 'POLICYGATE_TEST_OPERATOR': '1',
+                            'POLICYGATE_APPROVAL_PUBLIC_KEY': str(pubkey_path),
+                            'POLICYGATE_OPERATOR_PRIVATE_KEY': str(privkey_path)},
+                       check=True)
     # mkdir(0755) alone is NOT sufficient: the operator's umask 077 masks
     # its permissions to 0700 and makes the gateway fail closed to STRICT.
     # Only the mode/nonce activation directory is traversable; credentials and
     # the signing key remain root-private in separate protected directories.
     ensure_gateway_readable_activation_dir(active.parent)
     if not active.exists():
-        configured=json.loads(Path(proposed['policy']).read_text()).get('profile')
-        mode=configured if configured in ['strict','standard'] else 'strict'
+        configured=json.loads(policy_path.read_text()).get('profile', 'standard')
+        mode=configured if configured in ['strict','standard'] else 'standard'
         prior=Path(proposed['mode_file'])
         if prior.exists():
             # Legacy state lived in a service-writable directory. Import only

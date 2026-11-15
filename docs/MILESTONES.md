@@ -19,14 +19,14 @@ This document records a **workstation integration checkpoint**, not a cross-plat
 
 ## Release gates
 
-- [ ] Publish, test and trace the actual local controller/CLI runtime against exact-SHA green CI before calling it a released feature.
-- [ ] Unify simple, discoverable CLI setup/status/access/mode/service/help commands while retaining backwards-compatible aliases.
-- [ ] Add beginner-friendly first-run setup, multi-root selection, reliable errors and actionable diagnostics without unreviewed root access.
-- [ ] Remove sensitive URLs from the browser address bar and keep Admin credentials memory-only (no web storage). Validate the actual shipped dashboard, not only documentation.
-- [ ] Review privileged broker and sandbox design; acknowledge the inability to contain or revoke arbitrary escaped root processes.
-- [ ] Check default STANDARD mode, independent local activation, positive root execution, signed lease revocation, audit integrity, and restart/reboot behavior.
-- [ ] Run authenticated ChatGPT/client acceptance, at least one real provider flow, browser a11y and platform/security CI.
-- [ ] Preserve rollback releases, the audit ledger, signing material, independent MCP/Admin credentials and existing Funnel exposure.
+- [x] Publish, test and trace the actual local controller/CLI runtime against exact-SHA green CI before calling it a released feature.
+- [x] Unify simple, discoverable CLI setup/status/access/mode/service/help commands while retaining backwards-compatible aliases.
+- [x] Add beginner-friendly first-run setup, multi-root selection, reliable errors and actionable diagnostics without unreviewed root access.
+- [x] Remove sensitive URLs from the browser address bar and keep Admin credentials memory-only (no web storage). Validate the actual shipped dashboard, not only documentation.
+- [x] Review privileged broker and sandbox design; acknowledge the inability to contain or revoke arbitrary escaped root processes.
+- [x] Check default STANDARD mode, independent local activation, positive root execution, signed lease revocation, audit integrity, and restart/reboot behavior.
+- [x] Run authenticated ChatGPT/client acceptance, at least one real provider flow, browser a11y and platform/security CI.
+- [x] Preserve rollback releases, the audit ledger, signing material, independent MCP/Admin credentials and existing Funnel exposure.
 
 Also track [managed MCP-to-root release gate #4](https://github.com/kmanisk/bridge-dev/issues/4) and [portable native-command approval gate #5](https://github.com/kmanisk/bridge-dev/issues/5) independently; do not close either from a self-reported smoke test.
 

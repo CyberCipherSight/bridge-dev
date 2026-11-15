@@ -8,21 +8,21 @@ is added. Windows/macOS portable gateways do not install this component.
 
 ## Two user-facing modes
 
-- `bridge-dev mode read-write`: ordinary scoped filesystem, Git and command work.
-- `bridge-dev mode sudo`: asks `Enable Full System (sudo)? [Y/n]` in the operator's own terminal. Press **Enter** (default Yes) or type `y` to enable Full System **until manually disabled**, including after reboot. Type `n` to decline.
-- `bridge-dev mode sudo --duration 60`: optional time-limited access for 1–120 minutes.
-- `bridge-dev mode sudo --off`: revokes the lease and returns to Read & Write.
+- `bridge-dev mode standard` (alias: `bridge-dev mode read-write`): ordinary scoped filesystem, Git and command work across authorized workspaces.
+- `bridge-dev mode yolo` (alias: `bridge-dev mode sudo`): prompts for confirmation in the operator's own terminal (`Enable Full System (sudo)? [Y/n]`). Pressing **Enter** (default Yes) or typing `y` enables Full System **indefinitely until manually switched off**, including after reboot. Type `n` to decline.
+- `bridge-dev mode yolo --duration 60`: optional time-limited access for 1–120 minutes.
+- `bridge-dev mode yolo --off` (or `bridge-dev mode standard`): revokes the lease and returns to STANDARD mode.
 
-**Quick operator check (the documented published CLI):**
+**Operator commands:**
 
 ```sh
 bridge-dev mode status        # Current operator-selected state
-bridge-dev mode read-write    # Revoke Full System
-bridge-dev mode sudo          # Independent local confirmation; until manually off
-bridge-dev mode sudo --off    # Revoke Full System explicitly
+bridge-dev mode standard      # Return to Standard mode / revoke Full System
+bridge-dev mode yolo          # Independent local confirmation; until manually off
+bridge-dev mode yolo --off    # Revoke Full System explicitly
 ```
 
-The newer local workstation build reports `bridge-dev mode standard` and `bridge-dev mode yolo` aliases; until those changes are published and tested, check `bridge-dev help` on your own installed version rather than assuming either spelling is universal. The [release-readiness milestone](../docs/MILESTONES.md) tracks that unification.
+Both `standard`/`yolo` and legacy `read-write`/`sudo` aliases are supported across the unified CLI. The [release-readiness milestone](../docs/MILESTONES.md) tracks this verification.
 
 **Security boundary:** If an installation removes `NoNewPrivileges` or related systemd sandbox controls to allow sudo, it loses OS isolation. Neither application-level denylisted paths nor a signed `until_off` lease can contain arbitrary commands already executing as host root. Operators must review the actual installed unit, controller version, endpoint exposure and revocation behavior; a successful `id -u` is proof of execution, **not** proof of containment.
 

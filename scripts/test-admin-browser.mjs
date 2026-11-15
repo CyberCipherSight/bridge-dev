@@ -3,9 +3,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fixturePorts } from "./test-ports.mjs";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-const binary = process.env.BRIDGEDEV_TEST_BROWSER;
+let binary = process.env.BRIDGEDEV_TEST_BROWSER;
+if (!binary || !path.isAbsolute(binary)) {
+  for (const name of ["google-chrome", "chromium", "brave", "brave-browser"]) {
+    try {
+      const p = execSync(`which ${name} 2>/dev/null`, { encoding: "utf8" }).trim();
+      if (p && path.isAbsolute(p)) {
+        binary = p;
+        break;
+      }
+    } catch {}
+  }
+}
 if (!binary || !path.isAbsolute(binary))
   throw Error(
     "Set BRIDGEDEV_TEST_BROWSER to an existing Chromium-compatible executable",

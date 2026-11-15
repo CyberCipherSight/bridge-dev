@@ -71,7 +71,7 @@ export function checkPath(raw: string, kind: ToolClass, config: PolicyConfig, po
     throw new Error("POLICYGATE_HARD_PATH_DENIED: " + resolved + "; only the operator outside MCP may edit this path.");
   if (config.protected_paths.some((root) => within(resolved, root)))
     throw new Error("POLICYGATE_PROTECTED_PATH_DENIED: " + resolved);
-  if (!config.writable_roots.some((root) => within(resolved, root)))
+  if (config.profile !== "dangerous" && !config.writable_roots.some((root) => within(resolved, root)))
     throw new Error("POLICYGATE_OUTSIDE_WRITABLE_ROOTS: " + resolved + "; request an operator policy change.");
   return { resolved, approval: config.approval_paths.some((root) => within(resolved, root)) };
 }

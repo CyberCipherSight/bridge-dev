@@ -56,12 +56,13 @@ Windows dual-boot installations and Windows VMs use the PowerShell command **ins
 
 | Task | Command |
 | --- | --- |
-| Start gateway | `bridge-dev start` |
-| Check health and current mode | `bridge-dev doctor`, `bridge-dev mode status` |
+| Guided first-time setup | `bridge-dev setup` |
+| Start / Stop / Restart | `bridge-dev start`, `bridge-dev stop`, `bridge-dev restart` |
+| Check health and status | `bridge-dev doctor`, `bridge-dev status`, `bridge-dev mode status` |
 | Show private connection details | `bridge-dev access` (local terminal only) |
-| Manage a persistent Linux user service | `bridge-dev service install`, `bridge-dev service status`, `bridge-dev service logs` |
-| Update or roll back a verified Linux service release | `bridge-dev service update <sha-or-tag>`, `bridge-dev service rollback` |
-| Enter / leave managed Linux Full System | `bridge-dev mode sudo`, `bridge-dev mode sudo --off` |
+| Manage authorized workspaces | `bridge-dev workspace list`, `bridge-dev workspace add <path>`, `bridge-dev workspace remove <path>` |
+| Manage security mode | `bridge-dev mode standard`, `bridge-dev mode yolo`, `bridge-dev mode yolo --off` |
+| Manage persistent Linux service | `bridge-dev service install`, `bridge-dev service status`, `bridge-dev service update <sha-or-tag>`, `bridge-dev service rollback` |
 | See all supported commands | `bridge-dev help` |
 
 The persistent service is **optional and Linux-only**. Full System requires a **separately reviewed, independently authorized Linux host controller**; the portable installer does not grant sudo.
@@ -80,15 +81,19 @@ When using the managed gateway, call `system_context` before commands. If the Ch
 
 | Mode | Use |
 | --- | --- |
-| **Read & Write** | Scoped workspace files, Git and regular commands; standard portable and managed development |
-| **Full System (sudo)** | Managed **Linux only**: unrestricted host-root access after independent terminal confirmation; stays active until switched off |
+| **Standard (Read & Write)** | Scoped workspace files (default + added workspaces), Git and regular commands |
+| **YOLO (Full System sudo)** | Managed **Linux only**: unrestricted host-root access after independent terminal confirmation; stays active until switched off |
 
 For an already provisioned managed Linux installation:
 
 ```sh
-bridge-dev mode read-write
-bridge-dev mode sudo
-bridge-dev mode sudo --off
+bridge-dev mode standard
+bridge-dev mode yolo
+bridge-dev mode yolo --off
+# Compatibility aliases:
+# bridge-dev mode read-write
+# bridge-dev mode sudo
+# bridge-dev mode sudo --off
 ```
 
 For a **single local shell helper** with explicit verification and recovery
@@ -100,7 +105,7 @@ Full System asks for **independent local operator confirmation**. Without `--dur
 
 ## Milestone and release readiness
 
-[Milestone tracker #6](https://github.com/kmanisk/bridge-dev/issues/6) records the **2026-11-15 workstation MCP-to-root verification** and the next usability/security gates. Its verified local runtime is **not yet reconciled with published `main`**; the short `mode standard` / `mode yolo` aliases reported on that workstation must not be assumed available in every published installation. See [milestone evidence and remaining work](docs/MILESTONES.md). This is **not** a stable-v1 release announcement.
+[Milestone tracker #6](https://github.com/kmanisk/bridge-dev/issues/6) records the **workstation integration, CLI harmonization, multi-workspace support, and verified YOLO status**. The unified CLI commands (`bridge-dev setup`, `status`, `workspace`, `mode`, `access`) are reconciled with backward compatibility aliases (`mode sudo`, `mode read-write`, `project`, `serve`). See [milestone evidence and release gates](docs/MILESTONES.md).
 
 ## Platforms
 

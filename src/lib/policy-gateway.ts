@@ -144,13 +144,11 @@ export class PolicyGate {
     return digester.digest("hex");
   }
   getActiveProfile(): "strict" | "standard" | "dangerous" {
-    if (this.config.context_files.length === 0) {
-      return readPortableMode();
-    } // portable cannot activate a privileged operator lease
-    const controllerAvailable=hostControllerAvailable();
-    const activationFile=process.env.POLICYGATE_YOLO_ACTIVATION_FILE || (controllerAvailable?"/var/lib/bridge-dev-operator/active-lease.json":undefined);
+    const controllerAvailable = hostControllerAvailable();
+    const activationFile = process.env.POLICYGATE_YOLO_ACTIVATION_FILE || (controllerAvailable ? "/var/lib/bridge-dev-operator/active-lease.json" : undefined);
     const yoloPath = process.env.POLICYGATE_YOLO_LEASE || (fs.existsSync("/var/lib/bridge-dev/yolo-lease.json") ? "/var/lib/bridge-dev/yolo-lease.json" : "/var/lib/local-coder-policygate/yolo-lease.json");
     const pubKeyPath = process.env.POLICYGATE_APPROVAL_PUBLIC_KEY || (fs.existsSync("/etc/bridge-dev/operator-public.pem") ? "/etc/bridge-dev/operator-public.pem" : "/etc/local-coder-policygate/operator-public.pem");
+    const authorityFile = this.configPath || (fs.existsSync("/etc/bridge-dev/policygate.json") ? "/etc/bridge-dev/policygate.json" : "/etc/local-coder-policygate/policygate.json");
     try {
       if (fs.existsSync(yoloPath) && fs.existsSync(pubKeyPath)) {
         const content = fs.readFileSync(yoloPath, "utf8");
@@ -166,12 +164,16 @@ export class PolicyGate {
           const msg = JSON.stringify({ mode: lease.mode, expires_at: lease.expires_at, ...(lease.nonce ? { nonce: lease.nonce } : {}),...(lease.scope?{scope:lease.scope}:{}),...(lease.lifetime?{lifetime:lease.lifetime}:{}) });
           const pubKey = fs.readFileSync(pubKeyPath, "utf8");
           const ok = verify(null, Buffer.from(msg), pubKey, Buffer.from(lease.signature, "base64"));
-          if (ok && controllerAvailable && activationFile && verifyLeaseActivation(activationFile,lease,this.configPath)) return "dangerous";
+          if (ok && controllerAvailable && activationFile && verifyLeaseActivation(activationFile, lease, authorityFile)) return "dangerous";
         }
       }
     } catch {
       // Ignore lease parse or verification error, fall back to configured/override profile
     }
+
+    if (this.config.context_files.length === 0) {
+      return readPortableMode();
+    } // portable without active verified host lease stays standard/strict
 
     // Installed controllers publish protected mode state. Never fall back to
     // the legacy service-writable override after a revocation or corrupt marker.
