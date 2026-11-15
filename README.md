@@ -77,31 +77,88 @@ The persistent service is **optional and Linux-only**. Full System requires a **
 
 When using the managed gateway, call `system_context` before commands. If the ChatGPT connector uses separate MCP sessions, forward the returned short-lived `context_token` to context-gated tools. This token does not grant sudo permissions. [Policy and session details](docs/POLICY_GATEWAY.md).
 
-## Access modes
+## Access modes and power-user elevation
 
-| Mode | Use |
-| --- | --- |
-| **Standard (Read & Write)** | Scoped workspace files (default + added workspaces), Git and regular commands |
-| **YOLO (Full System sudo)** | Managed **Linux only**: unrestricted host-root access after independent terminal confirmation; stays active until switched off |
+**STANDARD is the default.** The portable installer does not grant administrator access. On Linux, an operator may separately install and review the [optional host-root controller](docs/HOST_CONTROLLER.md). It requires systemd, sudo, a local interactive terminal and independent operator authorization.
 
-For an already provisioned managed Linux installation:
+| Mode | Capabilities | How it is activated |
+| --- | --- | --- |
+| **STANDARD (Read & Write)** | Read and edit explicitly authorized workspace roots; normal user-level terminal/Git work; OS account permissions still apply | Default; `bridge-dev mode standard` |
+| **YOLO (Full System)** | The approved MCP `run_command` path can execute commands as **host root** without per-command prompts. Highly privileged access to the Linux machine | `bridge-dev mode yolo` in the **operator's local terminal**, with confirmation |
+
+**Important:** YOLO does **not** automatically make every native tool a root-filesystem editor: some native file tools retain their path restrictions. Use the authorized root command path for tasks outside those boundaries. It also does **not** give a remote MCP client permission to enable YOLO itself.
+
+### Enable indefinite YOLO on a managed Linux host
+
+1. Verify you are on the intended machine, have reviewed the [controller installation](docs/HOST_CONTROLLER.md), and have a trusted local terminal with sudo authorization. Installing BridgeDev normally is **not** enough.
+2. Inspect the current state, then explicitly authorize Full System:
+
+   ```sh
+   bridge-dev status
+   bridge-dev mode status
+   bridge-dev mode yolo
+   ```
+
+3. At the local `Enable Full System (sudo)? [Y/n]` prompt, approve only if you intend to grant the connected MCP gateway root execution. **No `--duration` means an indefinite signed `until_off` authorization**; it remains in effect across gateway restarts and is intended to persist across host reboots until explicitly revoked.
+4. Verify after activation:
+
+   ```sh
+   bridge-dev mode status
+   bridge-dev doctor
+   ```
+
+   From your connected MCP client, check `agent_status` for `full_machine_access: true` / `security_mode: dangerous`, then optionally perform a **read-only** `run_command` with `id -u`. UID `0` confirms that command ran as root; it is not a general security-containment test.
+
+### Disable YOLO / return to STANDARD
+
+From the same trusted local terminal:
 
 ```sh
-bridge-dev mode standard
-bridge-dev mode yolo
+bridge-dev mode standard       # Revoke indefinite YOLO authorization
+bridge-dev mode status         # Confirm STANDARD
+# Equivalent explicit revocation:
 bridge-dev mode yolo --off
-# Compatibility aliases:
-# bridge-dev mode read-write
-# bridge-dev mode sudo
-# bridge-dev mode sudo --off
 ```
 
-For a **single local shell helper** with explicit verification and recovery
-instructions, use [scripts/bridge-dev-recover.sh](scripts/bridge-dev-recover.sh):
-`sh bridge-dev-recover.sh check`, `on 60`, or `off`.
-It does not deploy code or replace the independent operator.
+The protected mode should report STANDARD and MCP `agent_status.full_machine_access` should be `false`. A failed or unconfirmed operator action exits nonzero; **do not interpret the attempted command as successful revocation without checking the resulting state**.
 
-Full System asks for **independent local operator confirmation**. Without `--duration`, the documented managed controller issues an `until_off` authorization; `--duration 60` selects an optional timed session. Treat unrestricted root as high risk: application path checks cannot contain arbitrary host-root code, and revocation cannot undo earlier changes. **Portable installation does not enable sudo.** Verify `agent_status.full_machine_access` rather than trusting a CLI message alone. [Linux controller setup](docs/HOST_CONTROLLER.md).
+For operators using the lower-level interface, `bridge-dev operator yolo on` and `bridge-dev operator yolo off` are available on installations with the controller. Legacy aliases `mode read-write`, `mode sudo`, and `mode sudo --off` remain supported. If you deliberately want a timed authorization instead, `bridge-dev mode yolo --duration 60` selects 60 minutes (supported range: 1–120).
+
+### Workspaces and common permission errors
+
+For **ordinary multi-project development**, prefer explicit STANDARD-mode workspace authorization rather than elevating the entire gateway:
+
+```sh
+bridge-dev workspace list
+bridge-dev workspace add /absolute/path/to/project
+bridge-dev restart             # Apply workspace changes; may interrupt active sessions
+bridge-dev workspace remove /absolute/path/to/project
+```
+
+`POLICYGATE_OUTSIDE_WRITABLE_ROOTS` in STANDARD indicates that a requested write is outside authorized workspace roots. This is expected protection, **not** proof that YOLO or the MCP connection is broken. A separately installed controller plus local authorization is required for genuine host-root command execution. `POLICYGATE_APPROVAL_REQUIRED` may require a separate operator review; do not bypass the policy by changing paths or tools.
+
+### Operational safeguards
+
+- **Indefinite YOLO is high risk**, especially with a publicly reachable MCP endpoint. Whoever controls the effective MCP credential may gain ongoing root execution while authorization remains active. Use trusted clients, protect the token-bearing URL, and disable YOLO when it is not required.
+- Application-level path filters and the signed lease do **not** sandbox arbitrary host-root commands. Revoking authorization blocks new controller operations and its tracked jobs; it cannot undo host modifications or guarantee recovery of escaped root processes.
+- The [persistent service updater](docs/PERSISTENT_SERVICE.md) runs STANDARD-only acceptance that checks root commands are denied. **Revoke YOLO and verify STANDARD before release updates or rollback.** Never bypass that check. If `SERVICE_ADMIN_CREDENTIAL_DRIFT` appears, running and persisted credentials disagree; reconcile them through the local operator workflow rather than blindly restarting and disconnecting MCP clients.
+- The separately installed Linux controller is **not supported by default** on Windows, macOS, Termux or Waydroid. Installing with `sudo` does not turn the portable install into a managed host gateway.
+
+For full installation prerequisites, signed authorization, root-job revocation and troubleshooting, read [Host controller](docs/HOST_CONTROLLER.md) and [Security](docs/POLICY_GATEWAY.md).
+
+## Live activity and local monitor (optional Linux integration)
+
+BridgeDev exposes authenticated Admin endpoints `/api/activity`, `/api/activity/history` and `/api/activity/stream` for recent tool calls, durations and errors. The Admin UI remains **localhost-only**; do not publish port 3001 via Funnel.
+
+A local Sway/Foot deployment can optionally connect these endpoints to an **on-demand terminal scratchpad**. This is a workstation customization, **not part of the portable install**. For example, a locally configured **Super+Alt+D** launcher can open a TUI with:
+
+- **Activity:** live MCP tool calls, summaries, status, duration and failures.
+- **Jobs:** tracked user-level job IDs, status and log inspection.
+- **Health:** running gateway, PID, release, mode, sessions and other diagnostics.
+
+The local monitor shown in the workstation integration uses `Tab` / `1`–`3` for views; `j/k` to navigate; `Enter` for details; `/` to filter; `l` for a job log; `r` to refresh; and `q` to exit. `c` currently **clears the filter only**. A separate `C` shortcut to clear displayed activity/jobs has been requested but **is not yet shipped**; do not advertise it as a working feature.
+
+**Display clearing must never delete the append-only audit ledger, job receipts, or log files.** A future clear-history control should hide previously displayed records only, allow new activity to appear, and keep durable audit/recovery evidence intact. The monitor displays only activity received by BridgeDev; it cannot reveal ChatGPT's internal reasoning or unrelated tools.
 
 ## Milestone and release readiness
 
