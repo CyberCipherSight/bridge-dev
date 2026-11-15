@@ -26,6 +26,32 @@ import { platformCapabilities, getRuntimeMode, portableStateDir, portableWorkspa
 
 const VERSION = "2.0.0";
 
+// Fallback dotenv loading if environment variables are not populated
+const envCandidates = [
+  process.env.DOTENV_CONFIG_PATH,
+  path.join(os.homedir(), ".config", "bridge-dev", ".env"),
+  path.join(process.cwd(), ".env"),
+].filter(Boolean) as string[];
+
+for (const envPath of envCandidates) {
+  if (fs.existsSync(envPath)) {
+    try {
+      const content = fs.readFileSync(envPath, "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+          if (!process.env[key]) process.env[key] = val;
+        }
+      }
+      break;
+    } catch {}
+  }
+}
+
 // Standard canonical & backward-compatible paths
 const CANONICAL_DIRS = {
   opt: "/opt/bridge-dev",
