@@ -11,6 +11,7 @@ profiles/*
 !profiles/post-edit-hooks.json
 !profiles/policy.example.json
 !profiles/native-tool-counts.json
+!profiles/marketplace.v1.json
 !profiles/chatgpt-connector-description.txt
 !profiles/bridge-dev-connector-description.txt
 .research/

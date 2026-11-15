@@ -86,3 +86,12 @@ rejected. tar header checksums and ZIP CRC are checked. No archive-supplied hook
 - OS keychain integration is not implemented. OAuth/registry secrets use private files; Windows relies on the account's actual filesystem ACLs.
 - Provider schemas using references or regex patterns fail closed as unsupported.
 - Actual public source availability, private credentials, client accounts and Android hardware are not exercised by fixture tests.
+
+### Scoped commit-pinned GitHub directories
+
+`https://github.com/owner/repo/tree/<commit>/skills/name` imports only that
+reviewed directory, including its relative references. Use a commit hash or a
+single-segment branch/tag; slash-containing refs are ambiguous and refused.
+Git sources fetch the requested commit/ref into a disposable bare repository,
+without checkout or hooks. Encoded traversal is refused before URL normalization.
+Source size, file-count, symlink and SSRF limits still apply.

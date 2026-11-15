@@ -69,6 +69,9 @@ with zipfile.ZipFile(sys.argv[1],"w") as z:
  const {McpUpstreamManager}=await import('../dist/lib/mcp-upstream-manager.js');
  const catalog=new SourceCatalog();
  const local=await catalog.discover(repo);assert.equal(local.resolved,commit);assert.equal(local.components.length,3);assert.equal(local.components.find(c=>c.kind==='mcp').provider.enabled,false);
+ const pinned=await catalog.discover('git+https://fixture.invalid/fixture.git#'+commit);assert.equal(pinned.resolved,commit);assert.equal(pinned.components.length,3);
+ const scoped=await catalog.discover('https://github.com/owner/project/tree/'+commit+'/skills/one');assert.equal(scoped.components.length,1);assert.equal(scoped.components[0].id,'one');assert.equal(scoped.resolved,commit);
+ await assert.rejects(catalog.discover('https://github.com/owner/project/tree/'+commit+'/skills/%2e%2e/escape'),/SOURCE_PATH_UNSAFE/);
  const remote=await catalog.discover('git+https://fixture.invalid/fixture.git');assert.equal(remote.resolved,commit);assert.equal(remote.components.length,3);
  for(const host of ['github.com','gitlab.com']){const hosted=await catalog.discover(`https://${host}/owner/project`);assert.equal(hosted.resolved,commit);assert.equal(hosted.components.length,3);}
  for(const url of ['https://raw.githubusercontent.com/owner/project/main/SKILL.md','https://github.com/owner/project/blob/main/SKILL.md','https://gitlab.com/owner/project/-/blob/main/SKILL.md'])assert.equal((await catalog.discover(url)).components[0].kind,'skill');

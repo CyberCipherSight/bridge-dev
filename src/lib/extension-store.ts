@@ -70,7 +70,16 @@ export class ExtensionStore {
  }
  async proposeProviderRemoval(id:string):Promise<Proposal>{
   const current=this.manager?.getServerConfig(id);if(!current)throw new Error("PROVIDER_NOT_FOUND");
+  const installed=(await this.list()).find(entry=>entry.key==="mcp:"+id);
+  if(installed)return this.proposeAction("remove",installed.key,installed.scope);
   return this.saveProposal({version:1,action:"remove",scope:"project",key:"mcp:"+id,provider:current,provider_expected:sha256(JSON.stringify(current)),created_at:Date.now()});
+ }
+ async proposeDefinition(raw:UpstreamServerConfig,scope:Scope="project"):Promise<Proposal>{
+  const provider=normalizeConfig({version:1,servers:[{...raw,enabled:false,expose:"none",tools:[],tool_permissions:{}}]}).servers[0];
+  if(this.manager?.getServerConfig(provider.id))throw Error("PROVIDER_ALREADY_REGISTERED: review the existing provider instead");
+  const component:ExtensionComponent={id:provider.id,kind:"mcp",name:provider.name,description:"Operator-reviewed executable or endpoint; prerequisites are not installed",files:{},provider,requirements:[provider.transport==="stdio"?"Independently installed executable and all runtime dependencies":"Compatible reachable MCP endpoint"],permissions:["Registration is disabled; separate execution and per-tool approval required"]};
+  const discovery:Discovery={source:"local-config:"+provider.id,adapter:"operator-definition",resolved:sha256(JSON.stringify(provider)),digest:sha256(JSON.stringify(component)),components:[component],warnings:["Reviewed definition only; no packages or analysis engines installed"]};
+  return this.saveProposal({version:1,action:"add",scope,discovery,selection:["mcp:"+provider.id],created_at:Date.now()});
  }
  async proposeProvider(id:string,changes:Partial<UpstreamServerConfig>):Promise<Proposal>{
   const current=this.manager?.getServerConfig(id);if(!current)throw new Error("PROVIDER_NOT_FOUND");
@@ -127,7 +136,7 @@ export class ExtensionStore {
    if(proposal.provider){
      if(!this.manager || sha256(JSON.stringify(this.manager.getServerConfig(proposal.provider.id)))!==proposal.provider_expected)throw new Error("PROVIDER_PROPOSAL_STALE");
      if(proposal.action==="remove")await this.manager.removeServer(proposal.provider.id);else await this.manager.upsertServer(proposal.provider);
-     const next={version:1 as const,entries:current.entries.map(entry=>entry.key===proposal.key?{...entry,component:{...entry.component,provider:proposal.provider},enabled:proposal.provider!.enabled}:entry)};
+     const next={version:1 as const,entries:proposal.action==="remove"?current.entries.filter(entry=>entry.key!==proposal.key):current.entries.map(entry=>entry.key===proposal.key?{...entry,component:{...entry.component,provider:proposal.provider},enabled:proposal.provider!.enabled}:entry)};
      await atomicJson(this.lockPath(proposal.scope),next);
      await fs.rename(path.join(this.root,"proposals",id+".json"),path.join(this.root,"proposals",id+".used.json"));return next;
    }

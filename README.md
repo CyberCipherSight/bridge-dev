@@ -186,3 +186,12 @@ Tailscale is optional: `bridge-dev start --funnel` explicitly enables exposure; 
 [Stabilization QA and privilege acceptance limits](docs/FINAL_QA.md).
 
 Linux users can install an opt-in [persistent user service](docs/PERSISTENT_SERVICE.md) with `bridge-dev service install`. The [local operations interface](docs/DASHBOARD.md) remains separate from the public MCP endpoint.
+
+### Integration marketplace
+
+Browse 106 metadata-verified MCP packages, skills and developer tools in the local
+Admin UI Marketplace. Prefer suitable connected ChatGPT plugins, declare your
+per-service preferences, and review installation proposals before running code.
+Catalog entries are separate from connected providers and callable tools.
+[Marketplace and provider priority](docs/MARKETPLACE.md) ·
+[REA connection and verified scope](docs/integrations/REA.md).

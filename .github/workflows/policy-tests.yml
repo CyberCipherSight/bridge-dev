@@ -29,6 +29,8 @@ jobs:
         run: node scripts/isolated-tests.mjs scripts/test-portable-runtime.mjs
       - name: Verify CLI security regression
         run: node scripts/isolated-tests.mjs scripts/test-bridge-dev-cli.mjs
+      - name: Verify offline marketplace and authenticated lifecycle
+        run: pnpm run test:marketplace
       - name: Verify real MCP registration inventory
         run: node scripts/isolated-tests.mjs scripts/sync-tool-counts.mjs
       - name: Local dashboard browser regression

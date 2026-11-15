@@ -1,8 +1,9 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import {readIntegrationPreferences,providerPreferenceAllows,type IntegrationPreferences} from "./integration-preferences.js";
 import {withFileLock,atomicJson} from "./atomic-store.js";
 import {ProviderTransport} from "./provider-transport.js";
 import {safeFetch} from "./safe-network.js";
-import {validateToolArguments,validateToolMetadata,sanitizeProviderResult,proxyToolName} from "./provider-security.js";
+import {validateToolArguments,inspectProviderTools,sanitizeProviderResult,proxyToolName} from "./provider-security.js";
 import {getPolicyGate} from "./policy-gateway.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -30,6 +31,8 @@ export interface UpstreamServerStatus {
   health: UpstreamHealth;
   connected: boolean;
   tool_count: number;
+  advertised_tool_count: number | null;
+  rejected_tool_count: number;
   expose: string;
   proxied_tools: string[];
   last_error?: string;
@@ -50,7 +53,13 @@ interface UpstreamConnection {
 let singleton: McpUpstreamManager | null = null;
 
 export class McpUpstreamManager {
+  private integrationPreferences:IntegrationPreferences={version:1,services:[]};
+  providerAllowed(id:string):boolean{return providerPreferenceAllows(this.integrationPreferences,id);}
   private config: UpstreamConfigFile;
+  private advertisedCounts=new Map<string,number>();
+  private rejectedTools=new Map<string,{name:string;reason:string}[]>();
+  inspectRejectedTools(id:string){return structuredClone(this.rejectedTools.get(id)||[]);}
+  private acceptTools(id:string,tools:Tool[]):Tool[]{this.advertisedCounts.set(id,tools.length);const result=inspectProviderTools(tools);this.rejectedTools.set(id,result.rejected);return result.tools;}
   private configPath: string;
   private connections = new Map<string, UpstreamConnection>();
   private connecting = new Map<string, Promise<UpstreamConnection>>();
@@ -70,6 +79,7 @@ export class McpUpstreamManager {
   initializationError?: string;
   configuration:{source_schema:string;migration_required:boolean}={source_schema:"missing",migration_required:false};
   private async loadConfiguration():Promise<void>{
+    this.integrationPreferences=await readIntegrationPreferences();
     const loaded=await loadUpstreamConfigDetails(this.configPath);this.config=loaded.config;this.configuration={source_schema:loaded.source_schema,migration_required:loaded.migration_required};
   }
   async init(): Promise<void> {
@@ -89,7 +99,7 @@ export class McpUpstreamManager {
 
   private syncPermissions():void{
     const permissions:Record<string,"R"|"W"|"X">={};
-    for(const config of this.config.servers)if(config.enabled)for(const [name,kind]of Object.entries(config.tool_permissions||{}))if(config.expose==="all"||config.tools?.includes(name))permissions[proxyToolName(config.tool_prefix||config.id,name)]=kind;
+    for(const config of this.config.servers)if(config.enabled&&this.providerAllowed(config.id))for(const [name,kind]of Object.entries(config.tool_permissions||{}))if(config.expose==="all"||config.tools?.includes(name))permissions[proxyToolName(config.tool_prefix||config.id,name)]=kind;
     getPolicyGate().setProviderPermissions(permissions);
   }
   registerMcpServer(server: McpServer): void {
@@ -118,7 +128,11 @@ export class McpUpstreamManager {
 
   async reloadConfig(): Promise<UpstreamConfigFile> {
     await this.shutdown();
-    await this.loadConfiguration();
+    try{await this.loadConfiguration();}
+    catch(error){
+      this.config={version:1,servers:[]};this.initializationError=String(error);
+      this.syncPermissions();await this.refreshAllProxies();throw error;
+    }
     this.initializationError=undefined;
     this.oauthProviders.clear();
     this.syncPermissions();
@@ -331,6 +345,7 @@ export class McpUpstreamManager {
     const failure=this.failures.get(serverId);
     if(failure && Date.now()<failure.until)throw new Error("PROVIDER_BACKOFF: "+failure.error);
     if (!config.enabled) throw new Error(`Upstream server disabled: ${serverId}`);
+    if (!this.providerAllowed(serverId))throw new Error("INTEGRATION_PREFERENCE_DENIED");
 
     const pending = this.connecting.get(serverId);
     if (pending) {
@@ -355,7 +370,7 @@ export class McpUpstreamManager {
       const { client, transport, pid } = await this.createTransport(config);
       try {
         const list = await this.withConnectTimeout(client.listTools(undefined,{timeout:15000}), serverId);
-        const tools = validateToolMetadata(list.tools ?? []);
+        const tools = this.acceptTools(serverId,list.tools ?? []);
         if(generation!==this.generation || !this.getServerConfig(serverId)?.enabled)throw new Error("PROVIDER_DISABLED_DURING_CONNECT");
         const conn: UpstreamConnection = {
           config,
@@ -440,7 +455,7 @@ export class McpUpstreamManager {
 
     const conn = await this.connect(serverId);
     const list = await conn.client.listTools(undefined,{timeout:15000});
-    const tools = validateToolMetadata(list.tools ?? []);
+    const tools = this.acceptTools(serverId,list.tools ?? []);
     conn.tools = tools;
     this.toolsCache.set(serverId, { tools, expiresAt: Date.now() + this.toolsCacheTtlMs });
     return tools;
@@ -453,6 +468,8 @@ export class McpUpstreamManager {
     const conn = await this.connect(serverId);
     const tool=conn.tools.find(item=>item.name===toolName);
     if(!tool)throw new Error("PROVIDER_UNKNOWN_TOOL");
+    const current=this.getServerConfig(serverId);
+    if(!current?.enabled||!this.getProxiedToolNames(current,[tool]).length)throw Error("PROVIDER_TOOL_DENIED: configuration changed during connection");
     validateToolArguments(tool,args);
     this.touch(conn);
     try {
@@ -471,13 +488,19 @@ export class McpUpstreamManager {
   }
   inspectCachedTools(serverId:string):Tool[]{return structuredClone(this.toolsCache.get(serverId)?.tools||[]);}
   async testProvider(serverId:string):Promise<{status:UpstreamServerStatus;tools:Tool[]}>{
+    if(!this.providerAllowed(serverId))throw new Error("INTEGRATION_PREFERENCE_DENIED");
     const config=this.getServerConfig(serverId);if(!config)throw new Error("PROVIDER_NOT_FOUND");
-    const {client,transport}=await this.createTransport(config);
     try{
-      const tools=validateToolMetadata((await this.withConnectTimeout(client.listTools(undefined,{timeout:15000}),serverId)).tools);
-      this.toolsCache.set(serverId,{tools,expiresAt:Date.now()+this.toolsCacheTtlMs});
-      return {status:this.buildStatus(config,"reachable",false,tools),tools};
-    }finally{await client.close().catch(()=>{});await transport.close().catch(()=>{});}
+      const {client,transport}=await this.createTransport(config);
+      try{
+        const tools=this.acceptTools(serverId,(await this.withConnectTimeout(client.listTools(undefined,{timeout:15000}),serverId)).tools);
+        this.toolsCache.set(serverId,{tools,expiresAt:Date.now()+this.toolsCacheTtlMs});this.failures.delete(serverId);
+        return {status:this.buildStatus(config,"reachable",false,tools),tools};
+      }finally{await client.close().catch(()=>{});await transport.close().catch(()=>{});}
+    }catch(error){
+      this.failures.set(serverId,{until:Date.now(),count:0,error:"PROVIDER_TEST_FAILED: check the reviewed executable, endpoint, runtime requirements and explicitly granted environment"});
+      throw error;
+    }
   }
   async checkHealth(serverId: string): Promise<UpstreamServerStatus> {
     const config = this.getServerConfig(serverId);
@@ -518,6 +541,8 @@ export class McpUpstreamManager {
       health,
       connected,
       tool_count: tools.length,
+      advertised_tool_count:this.advertisedCounts.get(config.id)??null,
+      rejected_tool_count:this.rejectedTools.get(config.id)?.length||0,
       expose: config.expose,
       proxied_tools: proxied,
       last_error: lastError,
@@ -526,6 +551,7 @@ export class McpUpstreamManager {
   }
 
   getProxiedToolNames(config: UpstreamServerConfig, tools: Tool[]): string[] {
+    if(!this.providerAllowed(config.id))return [];
     if (!config.enabled || config.expose === "none" || config.expose === "meta_only") return [];
 
     return tools

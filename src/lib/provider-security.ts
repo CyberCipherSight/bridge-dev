@@ -18,6 +18,55 @@ function checkSchema(schema:unknown,depth=0):void{
     checkSchema(value,depth+1);
   }
 }
+/** Expand finite document-local refs only. No network, dynamic refs or recursive expansion. */
+export function resolveLocalSchema(schema:any):any{
+ let budget=8192;
+ function visit(node:any,root:any,ancestors:Set<any>,depth:number):any{
+  if(--budget<0||depth>24)throw Error("PROVIDER_SCHEMA_EXPANSION_LIMIT");
+  if(!node||typeof node!=="object")return node;
+  if(Array.isArray(node))return node.map(x=>visit(x,root,ancestors,depth+1));
+  if(node.$id!==undefined)root=node;
+  let resolved:any={};
+  if(node.$ref!==undefined){
+   if(typeof node.$ref!=="string"||!/^#\/(?:\$defs|definitions)\//.test(node.$ref))throw Error("PROVIDER_SCHEMA_UNSUPPORTED: external or non-definition reference");
+   let target=root;
+   for(const key of node.$ref.slice(2).split("/").map((s:string)=>s.replace(/~1/g,"/").replace(/~0/g,"~"))){
+    if(["__proto__","prototype","constructor"].includes(key)||!target||!Object.hasOwn(target,key))throw Error("PROVIDER_SCHEMA_REFERENCE_MISSING");
+    target=target[key];
+   }
+   if(ancestors.has(target))throw Error("PROVIDER_SCHEMA_RECURSIVE_REFERENCE");
+   resolved=visit(target,root,new Set([...ancestors,target]),depth+1);
+  }
+  const own:any={};
+  for(const [key,value]of Object.entries(node)){
+   if(["$defs","definitions","$id","$ref"].includes(key))continue;
+   if(["__proto__","constructor","prototype"].includes(key))throw Error("PROVIDER_SCHEMA_UNSUPPORTED: "+key);
+   own[key]=visit(value,root,ancestors,depth+1);
+  }
+  return node.$ref!==undefined&&Object.keys(own).length?{allOf:[resolved,own]}:node.$ref!==undefined?resolved:own;
+ }
+ const expanded=visit(schema,schema,new Set(),0);
+ if(Buffer.byteLength(JSON.stringify(expanded))>65536)throw Error("PROVIDER_SCHEMA_EXPANSION_LIMIT");
+ return expanded;
+}
+export function inspectProviderTools(tools:Tool[]):{tools:Tool[];rejected:{name:string;reason:string}[]}{
+ if(tools.length>256)throw Error("PROVIDER_TOOL_COUNT_LIMIT");
+ const names=new Set<string>(),accepted:Tool[]=[],rejected:{name:string;reason:string}[]=[];
+ for(const tool of tools){
+  if(typeof tool.name!=="string"||!tool.name.length||tool.name.length>256||names.has(tool.name))throw Error("PROVIDER_INVALID_TOOL_NAME");
+  names.add(tool.name);
+  try{
+   if(Buffer.byteLength(JSON.stringify(tool))>65536)throw Error("PROVIDER_METADATA_SIZE_LIMIT");
+   const normalized={...tool,inputSchema:resolveLocalSchema(tool.inputSchema),...(tool.outputSchema?{outputSchema:resolveLocalSchema(tool.outputSchema)}:{})};
+   validateToolMetadata([normalized]);accepted.push(normalized);
+  }catch(error){
+   // Never echo schema contents, expressions or descriptions into diagnostics.
+   const reason=String((error as Error).message).match(/^PROVIDER_[A-Z_]+(?:: [a-zA-Z$ _-]+)?/)?.[0]||"PROVIDER_SCHEMA_INVALID";
+   rejected.push({name:cleanProviderText(tool.name,256),reason});
+  }
+ }
+ return {tools:accepted,rejected};
+}
 export function validateToolMetadata(tools:Tool[]):Tool[]{
   if(tools.length>256)throw new Error("PROVIDER_TOOL_COUNT_LIMIT");
   const names=new Set<string>();

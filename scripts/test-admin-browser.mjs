@@ -290,8 +290,24 @@ try {
     "name",
   ]);
   await evaluate('document.getElementById("detail").close()');
+  await evaluate('navigate("marketplace")');
+  assert.ok((await evaluate('marketData.catalog_total'))>=100);
+  await evaluate('document.getElementById("marketplace-search").value="Reverse Engineer Anything";document.getElementById("marketplace-filter").requestSubmit()');
+  await waitFor(()=>evaluate('marketData.total===1'));
+  assert.equal(await evaluate('marketData.entries[0].state.registered'),false);
+  await evaluate('[...screen.querySelectorAll("tbody button")].find(b=>b.textContent==="Details").click()');
+  await waitFor(()=>evaluate('document.getElementById("detail").open'));
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Preferred Provider"]').value`),'auto');
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Declared ChatGPT availability"]').value`),'unknown');
+  await evaluate('document.getElementById("detail").close()');
+  await evaluate('marketQuery={offset:0,limit:20};navigate("marketplace")');
+  await evaluate('[...screen.querySelectorAll("button")].find(b=>b.textContent==="Client integration preferences").click()');
+  await waitFor(()=>evaluate(`document.querySelector('[aria-label="Integration service"]')!==null`));
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Declared ChatGPT availability"]').value`),'unknown');
+  await evaluate('document.getElementById("detail").close()');
   const names = [
     "overview",
+    "marketplace",
     "extensions",
     "skills",
     "instructions",
@@ -398,9 +414,9 @@ try {
     adminUrl: `http://127.0.0.1:${adminPort}`,
     adminToken: admin,
   });
-  assert.ok(smoke.ok && smoke.sections.length === 9);
+  assert.ok(smoke.ok && smoke.sections.length === 10);
   console.log(
-    "Admin browser PASS: nine sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
+    "Admin browser PASS: ten sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
   );
 } finally {
   ws?.close();

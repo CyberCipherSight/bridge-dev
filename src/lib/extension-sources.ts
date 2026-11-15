@@ -125,7 +125,7 @@ async function gitCommand(args:string[],cwd:string):Promise<string>{
 }
 /** An on-demand bounded smart-HTTP relay keeps Git DNS/redirects under the same
  * source policy. No checkout, hooks, submodules, credential helpers or filters. */
-async function remoteGit(source:string):Promise<{files:Record<string,string>;resolved:string}>{
+async function remoteGit(source:string,prefix?:string):Promise<{files:Record<string,string>;resolved:string}>{
   const parsed=new URL(source.replace(/^git\+/,""));const ref=parsed.hash.slice(1);parsed.hash="";
   if(ref && !/^[a-zA-Z0-9_./-]{1,128}$/.test(ref))throw new Error("GIT_REF_INVALID");
   await validateNetworkUrl(parsed.href);
@@ -143,9 +143,13 @@ async function remoteGit(source:string):Promise<{files:Record<string,string>;res
   try{
     await new Promise<void>(resolve=>relay.listen(0,"127.0.0.1",resolve));
     const address=relay.address();if(!address||typeof address==="string")throw new Error("Git relay unavailable");
-    await gitCommand(["clone","--bare","--depth=1",...(ref?["--branch",ref]:[]),"--",`http://127.0.0.1:${address.port}/repo.git`,"repo"],root);
-    const gitDir=path.join(root,"repo"),resolved=(await gitCommand(["--git-dir",gitDir,"rev-parse","HEAD"],root)).trim();
-    const tree=await gitCommand(["--git-dir",gitDir,"ls-tree","-rzl",resolved],root);
+    await gitCommand(["init","--bare","repo"],root);
+    const gitDir=path.join(root,"repo");
+    await gitCommand(["--git-dir",gitDir,"fetch","--depth=1","--no-tags","--",`http://127.0.0.1:${address.port}/repo.git`,ref||"HEAD"],root);
+    const resolved=(await gitCommand(["--git-dir",gitDir,"rev-parse","FETCH_HEAD"],root)).trim();
+    if(/^[a-f0-9]{40}$/i.test(ref)&&resolved!==ref.toLowerCase())throw Error("SOURCE_COMMIT_CHANGED");
+    if(prefix)safeRelative(prefix);
+    const tree=await gitCommand(["--git-dir",gitDir,"ls-tree","-rzl",resolved,...(prefix?["--",":(literal)"+prefix+"/"]:[])],root);
     const files:Record<string,string>={};let count=0,bytes=0;
     for(const entry of tree.split("\0").filter(Boolean)){
       if(++count>512)throw new Error("SOURCE_FILE_COUNT_LIMIT");
@@ -153,7 +157,8 @@ async function remoteGit(source:string):Promise<{files:Record<string,string>;res
       if(!match || !["100644","100755"].includes(match[1]))throw new Error("SOURCE_GIT_SPECIAL_FILE_REFUSED");
       const [,mode,object,size,file]=match;safeRelative(file);
       if(Number(size)>1048576 || (bytes+=Number(size))>8*1048576)throw new Error("SOURCE_SIZE_LIMIT");
-      files[file]=await gitCommand(["--git-dir",gitDir,"cat-file","blob",object],root);
+      const selected=prefix?file.slice(prefix.length+1):file;safeRelative(selected);
+      files[selected]=await gitCommand(["--git-dir",gitDir,"cat-file","blob",object],root);
     }
     return {files,resolved};
   }finally{relay.closeAllConnections();await new Promise<void>(resolve=>relay.close(()=>resolve()));await fs.rm(root,{recursive:true,force:true});}
@@ -188,8 +193,21 @@ class LocalAdapter implements SourceAdapter{
  }
 }
 class GitAdapter implements SourceAdapter{
- id="git";detect(s:string):boolean{return /^git\+https:\/\//.test(s)||/^https:\/\/[^/]+\/.*\.git(?:#.*)?$/.test(s)||/^https:\/\/(github\.com|gitlab\.com)\/[^/]+\/[^/#]+\/?(?:#.*)?$/.test(s);}
- async discover(source:string){const result=await remoteGit(source);return {resolved:result.resolved,components:discoverFiles(result.files),warnings:[]};}
+ id="git";detect(s:string):boolean{return /^git\+https:\/\//.test(s)||/^https:\/\/[^/]+\/.*\.git(?:#.*)?$/.test(s)||/^https:\/\/(github\.com|gitlab\.com)\/[^/]+\/[^/#]+\/?(?:#.*)?$/.test(s)||/^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\//.test(s);}
+ async discover(source:string){
+  let prefix:string|undefined;
+  if(/^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\//.test(source)){
+   // Reject traversal before URL canonicalization removes encoded dot segments.
+   safeRelative(source.split("/").slice(7).map(decodeURIComponent).join("/"));
+   const url=new URL(source),parts=url.pathname.split("/").slice(1);
+   if(url.username||url.password||url.search||url.hash||parts.length<5)throw Error("GIT_DIRECTORY_SOURCE_INVALID");
+   const ref=decodeURIComponent(parts[3]);
+   if(!/^[a-zA-Z0-9_.-]{1,128}$/.test(ref))throw Error("GIT_DIRECTORY_REF_AMBIGUOUS: use a commit hash or single-segment ref");
+   prefix=safeRelative(parts.slice(4).map(decodeURIComponent).join("/"));
+   source=`https://github.com/${parts[0]}/${parts[1]}#${ref}`;
+  }
+  const result=await remoteGit(source,prefix);return {resolved:result.resolved,components:discoverFiles(result.files),warnings:[]};
+ }
 }
 class UrlAdapter implements SourceAdapter{
  id="https";detect(s:string):boolean{return /^https?:\/\//.test(s);}

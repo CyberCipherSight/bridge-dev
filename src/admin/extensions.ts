@@ -8,10 +8,35 @@ import type {McpUpstreamManager} from "../lib/mcp-upstream-manager.js";
 import {getPolicyGate} from "../lib/policy-gateway.js";
 import {redactAudit} from "../lib/hash-audit.js";
 import {sha256} from "../lib/extension-sources.js";
+import {marketplace,loadMarketplace} from "../lib/marketplace.js";
+import {readIntegrationPreferences,saveIntegrationPreference,integrationPreference,resolveIntegration} from "../lib/integration-preferences.js";
 export function extensionRouter(manager:McpUpstreamManager):Router{
  const router=Router(),store=new ExtensionStore(undefined,undefined,manager);
  const scope=z.enum(["user","project"]).default("project");
  const run=(handler:(req:any)=>Promise<unknown>)=>async(req:any,res:any)=>{try{res.json({ok:true,data:redactAudit(await handler(req))});}catch(error){res.status(400).json({ok:false,error:String(redactAudit(String(error)))});}};
+ router.get("/api/marketplace",run(req=>marketplace(manager,req.query)));
+ router.get("/api/marketplace/preferences",run(()=>readIntegrationPreferences()));
+ router.post("/api/marketplace/preferences",run(async req=>{
+  const value=integrationPreference.parse(req.body);
+  if(value.provider_id&&!manager.getServerConfig(value.provider_id))throw Error("PROVIDER_NOT_FOUND");
+  await getPolicyGate().audit.append({phase:"operator_integration_preference",...value});
+  const result=await saveIntegrationPreference(value);await manager.reloadConfig();return result;
+ }));
+ router.post("/api/marketplace/propose",run(async req=>{
+  const {id,scope:targetScope}=z.object({id:z.string().max(81),scope}).strict().parse(req.body);
+  const entry=(await loadMarketplace()).entries.find(e=>e.id===id);
+  if(!entry)throw Error("CATALOG_ENTRY_NOT_FOUND");
+  if(entry.type==="tool")throw Error("DEVELOPER_TOOL_REQUIRES_INDEPENDENT_SETUP: a CLI is not automatically an MCP server; review upstream installation and supported entrypoints");
+  const preference=(await readIntegrationPreferences()).services.find(s=>s.service===(entry.native_alternative?.service||entry.id));
+  if(!resolveIntegration(preference,entry.capabilities[0]).offer_local)throw Error("INTEGRATION_PREFERENCE_DENIED: choose a BridgeDev preference explicitly before proposing a duplicate");
+  if(entry.installation.mechanism==="native")throw Error("BUNDLED_TOOL_ALREADY_AVAILABLE");
+  return store.propose(entry.installation.source,undefined,targetScope);
+ }));
+ router.post("/api/extensions/provider-definition",run(async req=>{
+  const body=z.object({id:z.string().regex(/^[a-zA-Z0-9_-]{1,48}$/),name:z.string().min(1).max(128),transport:z.enum(["stdio","http"]),command:z.string().max(4096).optional(),args:z.array(z.string().max(4096)).max(64).optional(),env:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]{0,127}$/),z.string().max(4096)).refine(v=>Object.keys(v).length<=32).optional(),cwd:z.string().max(4096).optional(),url:z.string().url().max(2048).optional(),bearer_token_env_var:z.string().regex(/^[A-Z_][A-Z0-9_]*$/).optional(),auth:z.object({type:z.enum(["none","oauth","auto"])}).strict().optional(),allow_private_network:z.boolean().optional(),scope}).strict().parse(req.body);
+  const {scope:targetScope,...definition}=body;
+  return store.proposeDefinition({...definition,enabled:false,expose:"none"},targetScope);
+ }));
  router.post("/api/mode",run(async req=>{
   if(getRuntimeMode()!=="portable")throw new Error("Managed modes require the independent signed operator CLI");
   const {mode}=z.object({mode:z.enum(["strict","standard"])}).strict().parse(req.body);
@@ -34,7 +59,7 @@ export function extensionRouter(manager:McpUpstreamManager):Router{
  }));
  router.post("/api/extensions/provider-test",run(async req=>{const {name}=z.object({name:z.string()}).strict().parse(req.body),config=manager.getServerConfig(name);if(!config)throw new Error("PROVIDER_NOT_FOUND");await getPolicyGate().audit.append({phase:"operator_provider_test",provider:name,fingerprint:sha256(JSON.stringify(config))});return manager.testProvider(name);}));
  router.get("/api/extensions/provider-logs",run(async req=>manager.providerLogs(String(req.query.name||""))));
- router.get("/api/extensions/provider-tools",run(async req=>({origin:"untrusted provider",tools:manager.inspectCachedTools(String(req.query.name||""))})));
+ router.get("/api/extensions/provider-tools",run(async req=>({origin:"untrusted provider",tools:manager.inspectCachedTools(String(req.query.name||"")),rejected:manager.inspectRejectedTools(String(req.query.name||""))})));
  router.post("/api/extensions/apply",run(async req=>{
   const {id}=z.object({id:z.string().regex(/^[a-f0-9]{64}$/)}).strict().parse(req.body);
   const proposal=await store.proposal(id);

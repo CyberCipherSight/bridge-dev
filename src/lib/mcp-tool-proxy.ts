@@ -144,7 +144,7 @@ export async function refreshProxiedTools(server: McpServer, manager: McpUpstrea
 
 
     for (const tool of tools) {
-      if (!shouldExposeTool(config, tool.name)) continue;
+      if (!manager.providerAllowed(config.id)||!shouldExposeTool(config, tool.name)) continue;
       const proxyName = proxyToolName(config.tool_prefix ?? config.id,tool.name);
       if(activeNames.has(proxyName))throw new Error("PROVIDER_TOOL_NAMESPACE_COLLISION: "+proxyName);
       activeNames.add(proxyName);

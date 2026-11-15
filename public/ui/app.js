@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id),
   screen = $("screen");
 const sections = [
   "overview",
+  "marketplace",
   "extensions",
   "skills",
   "instructions",
@@ -286,6 +287,7 @@ async function discovered(data, parent, source, scope, kind) {
 }
 async function render() {
   screen.replaceChildren();
+  if (section === "marketplace") return marketplaceView();
   if (section === "overview") return overview();
   if (section === "extensions") return providers();
   if (["skills", "instructions", "packs"].includes(section)) return contents();
@@ -337,6 +339,12 @@ async function overview() {
   );
 }
 async function providers() {
+  screen.append(
+    controls(
+      action("Browse marketplace", () => navigate("marketplace")),
+      action("Configure provider", () => providerDefinition()),
+    ),
+  );
   addFlow("mcp");
   heading("MCP providers");
   const installed = new Set(
@@ -453,6 +461,10 @@ async function providerDetails(p) {
     content,
   );
   content.append(pre(p));
+  if (tools.rejected?.length) {
+    heading("Unsupported tools (not exposed)", content);
+    content.append(pre(tools.rejected));
+  }
   const allow = [];
   heading("Tool permissions", content);
   for (const tool of tools.tools || []) {
@@ -1212,3 +1224,430 @@ document.addEventListener("visibilitychange", () => {
   } else if (activityWanted && $("detail").open && section === "audit")
     activityResume?.();
 });
+
+// The catalog is inert metadata. Browsing never contacts package registries or providers.
+let marketQuery = { offset: 0, limit: 20 },
+  marketData;
+async function marketplaceView() {
+  const data = await api(
+    "/api/marketplace?" + new URLSearchParams(marketQuery),
+  );
+  marketData = data;
+  heading("Integration marketplace");
+  screen.append(
+    action("Client integration preferences", globalIntegrationPreferences),
+  );
+  screen.append(el("p", data.verification), el("p", data.inventory_source));
+  const form = el("form", undefined, {
+    class: "actions",
+    id: "marketplace-filter",
+  });
+  const query = el("input", undefined, {
+    "aria-label": "Search catalog",
+    placeholder: "Search all integrations",
+    id: "marketplace-search",
+  });
+  query.value = marketQuery.query || "";
+  form.append(query);
+  for (const [key, options] of [
+    ["category", data.categories],
+    ["type", ["mcp", "skill", "tool"]],
+    ["platform", data.platforms],
+    ["maintainer", data.maintainers],
+    ["view", ["all", "installed", "connected", "available", "recommended"]],
+  ]) {
+    const select = el("select", undefined, { "aria-label": "Catalog " + key });
+    select.append(
+      el("option", key === "view" ? "All views" : "Any " + key, {
+        value: key === "view" ? "all" : "",
+      }),
+    );
+    for (const option of options)
+      select.append(el("option", option, { value: option }));
+    select.value = marketQuery[key] || (key === "view" ? "all" : "");
+    select.addEventListener("change", async () => {
+      marketQuery[key] = select.value;
+      if (!select.value) delete marketQuery[key];
+      marketQuery.offset = 0;
+      await render();
+    });
+    form.append(select);
+  }
+  form.append(el("button", "Search", { type: "submit" }));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    marketQuery.query = query.value;
+    marketQuery.offset = 0;
+    await render();
+  });
+  screen.append(form);
+  table(
+    [
+      "Name",
+      "Type",
+      "Category",
+      "Version",
+      "State",
+      "ChatGPT alternative",
+      "Recommendation",
+      "Related guidance",
+      "Details",
+    ],
+    data.entries.map((entry) => [
+      entry.name,
+      entry.type,
+      entry.category,
+      entry.version,
+      entry.state.connected
+        ? "Connected; " + entry.state.exposed.length + " exposed"
+        : entry.state.registered
+          ? "Registered; " + (entry.state.enabled ? "enabled" : "disabled")
+          : entry.state.installed
+            ? "Installed"
+            : "Available; requirements unverified",
+      entry.native_alternative
+        ? entry.native_alternative.service +
+          " / " +
+          entry.state.native_availability
+        : "Not established",
+      (entry.state.duplicate_warning ? "Duplicate warning: " : "") +
+        entry.recommendation.provider,
+      entry.state.related_skills
+        ?.filter((s) => s.installed)
+        .map((s) => s.name + " (" + (s.enabled ? "enabled" : "disabled") + ")")
+        .join(", ") || "none",
+      action("Details", () => marketplaceDetails(entry)),
+    ]),
+    "Marketplace",
+  );
+  screen.append(
+    el(
+      "p",
+      `${data.total} matching / ${data.catalog_total} entries. Page ${Math.floor(data.offset / data.limit) + 1}.`,
+    ),
+  );
+  screen.append(
+    controls(
+      action(
+        "Previous",
+        async () => {
+          marketQuery.offset = Math.max(0, data.offset - data.limit);
+          await render();
+        },
+        {},
+      ),
+      action(
+        "Next",
+        async () => {
+          marketQuery.offset = data.offset + data.limit;
+          await render();
+        },
+        {},
+      ),
+    ),
+  );
+  // Avoid setting a boolean HTML attribute to the string "undefined".
+  const paging = screen.lastChild.querySelectorAll("button");
+  paging[0].disabled = data.offset === 0;
+  paging[1].disabled = data.offset + data.limit >= data.total;
+}
+async function marketplaceDetails(entry) {
+  const body = el("div");
+  pairs(
+    {
+      Name: entry.name,
+      Type: entry.type,
+      Maintainer: entry.maintainer,
+      Source: entry.source,
+      License: entry.license,
+      Version: entry.version,
+      Platforms: entry.platforms,
+      Requirements: entry.requirements,
+      Credentials: entry.credentials,
+      Permissions: entry.permissions,
+      Maintenance: entry.maintenance,
+      Verified: entry.verified_at + " / " + entry.evidence.level,
+      "Tool inventory": entry.tools.verified
+        ? entry.tools
+        : "Not runtime-verified; connect and test before claiming callable tools",
+      State: entry.state,
+      Recommendation: entry.recommendation.reason,
+    },
+    body,
+  );
+  body.append(el("p", entry.installation.instructions));
+  const pref = el("select", undefined, { "aria-label": "Preferred Provider" });
+  for (const [value, label] of [
+    ["auto", "Auto / Prefer ChatGPT"],
+    ["prefer-bridgedev", "Prefer BridgeDev"],
+    ["chatgpt-only", "ChatGPT only"],
+    ["bridgedev-only", "BridgeDev only"],
+    ["disabled", "Disabled"],
+  ])
+    pref.append(el("option", label, { value }));
+  pref.value = entry.preference?.preference || "auto";
+  const availability = el("select", undefined, {
+    "aria-label": "Declared ChatGPT availability",
+  });
+  for (const x of ["unknown", "connected", "not-connected"])
+    availability.append(el("option", x, { value: x }));
+  availability.value = entry.preference?.availability || "unknown";
+  const kind = el("select", undefined, { "aria-label": "ChatGPT plugin kind" });
+  for (const x of ["official", "third-party"])
+    kind.append(el("option", x, { value: x }));
+  kind.value = entry.preference?.native_kind || "official";
+  const capabilities = el("input", undefined, {
+    "aria-label": "Verified ChatGPT capabilities",
+    placeholder: entry.capabilities.join(", "),
+  });
+  capabilities.value = entry.preference?.capabilities.join(", ") || "";
+  const provider = el("select", undefined, {
+    "aria-label": "Bind registered BridgeDev provider",
+  });
+  provider.append(el("option", "No provider binding", { value: "" }));
+  for (const p of extensions.providers || [])
+    provider.append(el("option", p.id, { value: p.id }));
+  provider.value = entry.preference?.provider_id || "";
+  body.append(
+    el(
+      "p",
+      "Connection is a user declaration. List only capabilities you have verified. ChatGPT only / Disabled blocks the explicitly bound BridgeDev provider; Auto never silently disables it.",
+    ),
+    pref,
+    availability,
+    kind,
+    capabilities,
+    provider,
+    action("Save provider preference", async () => {
+      await api("/api/marketplace/preferences", {
+        service: entry.native_alternative?.service || entry.id,
+        preference: pref.value,
+        availability: availability.value,
+        native_kind: kind.value,
+        capabilities: capabilities.value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        ...(provider.value ? { provider_id: provider.value } : {}),
+      });
+      $("detail").close();
+      await refreshAll();
+      notice(
+        "Provider preference saved. Reconnect clients to refresh tool lists.",
+      );
+    }),
+  );
+  if (
+    entry.recommendation.offer_local &&
+    entry.installation.mechanism !== "native"
+  )
+    body.append(
+      action("Preview installation proposal", async () => {
+        const proposal = await api("/api/marketplace/propose", {
+          id: entry.id,
+          scope: "project",
+        });
+        body.append(
+          pre(proposal),
+          action("Review in Approvals", async () => {
+            $("detail").close();
+            await navigate("approvals");
+          }),
+        );
+      }),
+    );
+  if (entry.recommendation.offer_local && entry.type === "mcp")
+    body.append(
+      action("Configure installed executable or endpoint", () =>
+        providerDefinition(entry),
+      ),
+    );
+  details(entry.name, body);
+}
+function providerDefinition(entry) {
+  const form = el("form", undefined, { class: "form-grid" }),
+    fields = {};
+  for (const [key, label, value] of [
+    ["id", "Provider ID", entry?.id || ""],
+    ["name", "Display name", entry?.name || ""],
+    ["command", "Installed executable (absolute path)", ""],
+    ["args", "Arguments (one per line; no shell interpolation)", ""],
+    ["env", "Explicit non-secret environment (NAME=value per line)", ""],
+    ["cwd", "Working directory", ""],
+    ["url", "HTTP MCP URL", ""],
+    ["bearer_token_env_var", "Existing credential environment reference", ""],
+  ]) {
+    const input = el(
+      ["args", "env"].includes(key) ? "textarea" : "input",
+      undefined,
+      { "aria-label": label, id: "provider-definition-" + key },
+    );
+    input.value = value;
+    fields[key] = input;
+    form.append(el("label", label, { for: input.id }), input);
+  }
+  const transport = el("select", undefined, {
+    "aria-label": "Provider transport",
+  });
+  for (const x of ["stdio", "http"])
+    transport.append(el("option", x, { value: x }));
+  form.prepend(transport);
+  const auth = el("select", undefined, { "aria-label": "HTTP authentication" });
+  for (const x of ["none", "oauth", "auto"])
+    auth.append(el("option", x, { value: x }));
+  form.append(auth);
+  form.append(
+    el(
+      "p",
+      "No executable is downloaded or launched here. Registration is disabled. Review prerequisites and credential references; connection and tool exposure require separate approval. Never paste secrets into arguments or URLs.",
+    ),
+  );
+  const out = el("div");
+  form.append(
+    el("button", "Preview disabled registration", { type: "submit" }),
+    out,
+  );
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const body = {
+        id: fields.id.value,
+        name: fields.name.value,
+        transport: transport.value,
+        scope: "project",
+      };
+      if (transport.value === "stdio") {
+        body.command = fields.command.value;
+        if (fields.env.value) {
+          body.env = Object.fromEntries(
+            fields.env.value
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => {
+                const i = line.indexOf("=");
+                if (i < 1) throw Error("Environment requires NAME=value");
+                return [line.slice(0, i), line.slice(i + 1)];
+              }),
+          );
+        }
+        body.args = fields.args.value.split("\n").filter(Boolean);
+        if (fields.cwd.value) body.cwd = fields.cwd.value;
+      } else {
+        body.url = fields.url.value;
+        body.auth = { type: auth.value };
+        if (fields.bearer_token_env_var.value)
+          body.bearer_token_env_var = fields.bearer_token_env_var.value;
+      }
+      const p = await api("/api/extensions/provider-definition", body);
+      out.replaceChildren(
+        pre(p),
+        action("Review in Approvals", async () => {
+          $("detail").close();
+          await navigate("approvals");
+        }),
+      );
+    } catch (error) {
+      out.replaceChildren(pre(error.message));
+    }
+  });
+  details("Configure provider", form);
+}
+
+async function globalIntegrationPreferences() {
+  const current = await api("/api/marketplace/preferences"),
+    form = el("form", undefined, { class: "form-grid" });
+  const service = el("select", undefined, {
+    "aria-label": "Integration service",
+  });
+  const services = [
+    ...new Set([
+      "github",
+      "google-drive",
+      "gmail",
+      "google-calendar",
+      "notion",
+      "figma",
+      "slack",
+      "linear",
+      "jira",
+      ...current.services.map((s) => s.service),
+    ]),
+  ].sort();
+  for (const x of services) service.append(el("option", x, { value: x }));
+  const choice = el("select", undefined, {
+    "aria-label": "Preferred Provider",
+  });
+  for (const [v, label] of [
+    ["auto", "Auto / Prefer ChatGPT"],
+    ["prefer-bridgedev", "Prefer BridgeDev"],
+    ["chatgpt-only", "ChatGPT only"],
+    ["bridgedev-only", "BridgeDev only"],
+    ["disabled", "Disabled"],
+  ])
+    choice.append(el("option", label, { value: v }));
+  const availability = el("select", undefined, {
+    "aria-label": "Declared ChatGPT availability",
+  });
+  for (const v of ["unknown", "connected", "not-connected"])
+    availability.append(el("option", v, { value: v }));
+  const kind = el("select", undefined, { "aria-label": "ChatGPT plugin kind" });
+  for (const v of ["official", "third-party"])
+    kind.append(el("option", v, { value: v }));
+  const capabilities = el("input", undefined, {
+    "aria-label": "Verified ChatGPT capabilities",
+    placeholder: "Comma-separated capability identifiers",
+  });
+  const provider = el("select", undefined, {
+    "aria-label": "Bind registered BridgeDev provider",
+  });
+  provider.append(el("option", "No provider binding", { value: "" }));
+  for (const p of extensions.providers || [])
+    provider.append(el("option", p.id, { value: p.id }));
+  function load() {
+    const p = current.services.find((s) => s.service === service.value);
+    choice.value = p?.preference || "auto";
+    availability.value = p?.availability || "unknown";
+    kind.value = p?.native_kind || "official";
+    capabilities.value = p?.capabilities.join(", ") || "";
+    provider.value = p?.provider_id || "";
+  }
+  service.addEventListener("change", load);
+  load();
+  form.append(
+    el(
+      "p",
+      "User declarations only. BridgeDev cannot inspect ChatGPT account plugins. Exact supported capability names are required; connection alone does not establish task coverage. Bind an existing provider to enforce ChatGPT only / Disabled locally.",
+    ),
+    service,
+    choice,
+    availability,
+    kind,
+    capabilities,
+    provider,
+    el("button", "Save preference", { type: "submit" }),
+  );
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/marketplace/preferences", {
+        service: service.value,
+        preference: choice.value,
+        availability: availability.value,
+        native_kind: kind.value,
+        capabilities: capabilities.value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        ...(provider.value ? { provider_id: provider.value } : {}),
+      });
+      $("detail").close();
+      await refreshAll();
+      notice(
+        "Preference saved. Refresh connector tool lists when provider exposure changed.",
+      );
+    } catch (error) {
+      showError(error);
+    }
+  });
+  details("Client integration preferences", form);
+}

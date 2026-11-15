@@ -137,3 +137,11 @@ This fixes the former invalid array at `data`; MCP consumers must read
 `bridge-dev skills validate --json` preserves its existing `{ ok: true, data: [] }`
 array contract. The Admin UI uses extension metadata endpoints and does not
 consume the MCP validation payload; its response format is unchanged.
+
+The [marketplace](MARKETPLACE.md) adds inert, versioned metadata discovery and
+operator-owned provider preferences. `extensions_search` searches the catalog;
+`extensions_list` continues to inspect installed entries. In provider details,
+unsupported schemas are listed separately. Finite local JSON Schema definitions
+are expanded with bounded depth, size and node count; remote/dynamic references,
+recursive expansion and regex remain refused. Other compatible tools can still
+connect; rejected tools cannot be exposed or called.
