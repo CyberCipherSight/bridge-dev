@@ -33,6 +33,19 @@ Start BridgeDev in the foreground using `bridge-dev start`. Run `bridge-dev acce
 
 The launcher directory may need to be on your shell PATH; the installer prints its full path and the relevant PATH command. Windows PowerShell installation adds the launcher directory to your user PATH for new terminals.
 
+### Daily use and simple checks
+
+```sh
+bridge-dev start           # Foreground portable gateway (Ctrl+C to stop)
+bridge-dev access          # Private Admin/MCP connection details
+bridge-dev doctor          # Diagnose installation and connectivity
+bridge-dev help            # Supported commands on your installed version
+```
+
+On Linux, an **optional** persistent user service supports `bridge-dev service install`, `service status`, `service logs`, `service update <sha-or-tag>` and `service rollback`. See [Persistent service](PERSISTENT_SERVICE.md). It is not the same as installing the separately reviewed [host-root controller](HOST_CONTROLLER.md).
+
+For ChatGPT, provide the HTTPS MCP URL from `bridge-dev access`; with a legacy token-in-path URL select **Authentication: None**. Keep the token and any private Admin URL out of logs, screenshots and GitHub issues. The dashboard stays local. Portable `system_context` may legitimately be unconfigured.
+
 ### Updating
 
 Run the same installer command again. The existing private configuration and workspace are preserved; the runtime is rebuilt and the previous version is retained. The installer does **not** automatically restart a running gateway—stop it first if you want to use the updated version.

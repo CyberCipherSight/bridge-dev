@@ -13,6 +13,19 @@ is added. Windows/macOS portable gateways do not install this component.
 - `bridge-dev mode sudo --duration 60`: optional time-limited access for 1–120 minutes.
 - `bridge-dev mode sudo --off`: revokes the lease and returns to Read & Write.
 
+**Quick operator check (the documented published CLI):**
+
+```sh
+bridge-dev mode status        # Current operator-selected state
+bridge-dev mode read-write    # Revoke Full System
+bridge-dev mode sudo          # Independent local confirmation; until manually off
+bridge-dev mode sudo --off    # Revoke Full System explicitly
+```
+
+The newer local workstation build reports `bridge-dev mode standard` and `bridge-dev mode yolo` aliases; until those changes are published and tested, check `bridge-dev help` on your own installed version rather than assuming either spelling is universal. The [release-readiness milestone](../docs/MILESTONES.md) tracks that unification.
+
+**Security boundary:** If an installation removes `NoNewPrivileges` or related systemd sandbox controls to allow sudo, it loses OS isolation. Neither application-level denylisted paths nor a signed `until_off` lease can contain arbitrary commands already executing as host root. Operators must review the actual installed unit, controller version, endpoint exposure and revocation behavior; a successful `id -u` is proof of execution, **not** proof of containment.
+
 This requires the separately installed root-owned controller. The internal STRICT
 profile remains a **fail-closed safety lock**, not a third user-facing choice.
 If the controller is installed but the protected mode is STRICT, explicitly

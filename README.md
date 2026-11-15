@@ -21,10 +21,17 @@ The installer downloads the current GitHub source, builds BridgeDev, creates a p
 **After installation:**
 
 ```sh
-bridge-dev start
+bridge-dev start              # Start the portable gateway
 ```
 
-The gateway runs in the foreground. In another **private terminal**, run `bridge-dev access` to view the local Admin UI login and MCP connection details. Press Ctrl+C to stop the gateway. The installer prints the launcher's full path if it is not yet on `PATH`.
+In a second **private terminal**:
+
+```sh
+bridge-dev access             # Show Admin UI and MCP connection details
+bridge-dev doctor             # Check installation and connectivity
+```
+
+The foreground gateway stops with Ctrl+C. These commands require no root access. The installer shows the full launcher path if it is not yet on `PATH`.
 
 <details>
 <summary>Android / Termux and other environments</summary>
@@ -45,9 +52,27 @@ Windows dual-boot installations and Windows VMs use the PowerShell command **ins
 - **Admin UI:** See enabled providers, tool access and reviewed proposals.
 - **User-controlled access:** Normal Read & Write mode; optional managed Linux Full System (sudo) mode.
 
+## Common commands
+
+| Task | Command |
+| --- | --- |
+| Start gateway | `bridge-dev start` |
+| Check health and current mode | `bridge-dev doctor`, `bridge-dev mode status` |
+| Show private connection details | `bridge-dev access` (local terminal only) |
+| Manage a persistent Linux user service | `bridge-dev service install`, `bridge-dev service status`, `bridge-dev service logs` |
+| Update or roll back a verified Linux service release | `bridge-dev service update <sha-or-tag>`, `bridge-dev service rollback` |
+| Enter / leave managed Linux Full System | `bridge-dev mode sudo`, `bridge-dev mode sudo --off` |
+| See all supported commands | `bridge-dev help` |
+
+The persistent service is **optional and Linux-only**. Full System requires a **separately reviewed, independently authorized Linux host controller**; the portable installer does not grant sudo.
+
 ## Connect ChatGPT Web
 
-`bridge-dev access` displays the local URL and login details. **ChatGPT Web cannot connect directly to `localhost`**. To use it remotely, expose only the authenticated MCP endpoint through a separately configured HTTPS tunnel; never expose the local Admin UI.
+1. Run `bridge-dev access` in a private terminal to get your MCP connection URL.
+2. In ChatGPT, add a **custom MCP server** using that HTTPS URL. When using the legacy token-in-URL format, select **Authentication: None**; the path already contains the credential. Keep that URL private.
+3. After connecting, verify `agent_status`, `run_command` with `pwd`, and `mcp_list`. A portable gateway may report `system_context` as **not configured**; that is not itself a connection failure.
+
+**ChatGPT Web cannot connect directly to `localhost`.** Expose only the authenticated MCP endpoint through a separately configured HTTPS tunnel. Keep the Admin UI bound to loopback; never expose it through Funnel or publish its token.
 
 When using the managed gateway, call `system_context` before commands. If the ChatGPT connector uses separate MCP sessions, forward the returned short-lived `context_token` to context-gated tools. This token does not grant sudo permissions. [Policy and session details](docs/POLICY_GATEWAY.md).
 
@@ -71,7 +96,11 @@ instructions, use [scripts/bridge-dev-recover.sh](scripts/bridge-dev-recover.sh)
 `sh bridge-dev-recover.sh check`, `on 60`, or `off`.
 It does not deploy code or replace the independent operator.
 
-Full System displays `Enable Full System (sudo)? [Y/n]`. Press Enter or `y` to approve, or `n` to decline. Use `--duration 60` for an optional timed session. **The portable installer does not install the privileged host controller or automatically activate sudo.** [Linux controller setup](docs/HOST_CONTROLLER.md).
+Full System asks for **independent local operator confirmation**. Without `--duration`, the documented managed controller issues an `until_off` authorization; `--duration 60` selects an optional timed session. Treat unrestricted root as high risk: application path checks cannot contain arbitrary host-root code, and revocation cannot undo earlier changes. **Portable installation does not enable sudo.** Verify `agent_status.full_machine_access` rather than trusting a CLI message alone. [Linux controller setup](docs/HOST_CONTROLLER.md).
+
+## Milestone and release readiness
+
+[Milestone tracker #6](https://github.com/kmanisk/bridge-dev/issues/6) records the **2026-11-15 workstation MCP-to-root verification** and the next usability/security gates. Its verified local runtime is **not yet reconciled with published `main`**; the short `mode standard` / `mode yolo` aliases reported on that workstation must not be assumed available in every published installation. See [milestone evidence and remaining work](docs/MILESTONES.md). This is **not** a stable-v1 release announcement.
 
 ## Platforms
 
