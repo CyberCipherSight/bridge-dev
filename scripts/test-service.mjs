@@ -8,6 +8,12 @@ import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
 import { fixturePorts } from "./test-ports.mjs";
 import { gzipSync, gunzipSync } from "node:zlib";
+
+// The release controller must refuse dangerous-mode acceptance before cutover.
+// This is a structural regression; live negative acceptance is tested separately.
+const managerSource = await fs.readFile("src/lib/service-manager.ts", "utf8");
+assert.equal((managerSource.match(/await requireStandardServiceMode\(/g) || []).length, 3);
+assert.match(managerSource, /SERVICE_UPDATE_REQUIRES_STANDARD/);
 if (!process.env.BRIDGEDEV_TEST_ROOT) throw Error("Use isolated-tests.mjs");
 const base = path.join(process.env.BRIDGEDEV_TEST_ROOT, "service-test");
 await fs.mkdir(base);

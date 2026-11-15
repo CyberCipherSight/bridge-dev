@@ -467,7 +467,13 @@ async function cmdMode(args: string[], json = false) {
   }
   if (["read-write","readwrite","rw","standard"].includes(target)) {
     if (hostControllerAvailable()) {
-      runOperator(["mode","standard"]);
+      if (!runOperator(["mode","standard"])) return;
+      const verified = getActiveMode();
+      if (verified.mode !== "STANDARD") {
+        console.error("STANDARD transition not confirmed: protected state reports " + verified.mode);
+        process.exitCode = 1;
+        return;
+      }
       console.log("Active mode switched to STANDARD.");
       return;
     }
@@ -490,7 +496,13 @@ async function cmdMode(args: string[], json = false) {
       return;
     }
     if (args.includes("--off")) {
-      runOperator(["mode","standard"]);
+      if (!runOperator(["mode","standard"])) return;
+      const verified = getActiveMode();
+      if (verified.mode !== "STANDARD") {
+        console.error("Full System revocation not confirmed: protected state reports " + verified.mode);
+        process.exitCode = 1;
+        return;
+      }
       console.log("Full System deactivated. Returned to STANDARD mode.");
       return;
     }

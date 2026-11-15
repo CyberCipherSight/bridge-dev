@@ -254,6 +254,20 @@ async function authHealth(c: ServiceConfig): Promise<any> {
   if (!response.ok) throw Error("SERVICE_ADMIN_HEALTH_FAILED");
   return response.json();
 }
+
+/** Release acceptance tests deny privileged and destructive commands. Never run
+ * them against an operator-authorized Full System gateway. Fail before cutover,
+ * and repeat the check after staging in case the operator changed modes. */
+async function requireStandardServiceMode(c: ServiceConfig): Promise<void> {
+  let health: any;
+  try {
+    health = await authHealth(c);
+  } catch {
+    throw Error("SERVICE_UPDATE_REQUIRES_HEALTHY_STANDARD_GATEWAY");
+  }
+  if (health.status !== "ok" || health.full_machine_access !== false)
+    throw Error("SERVICE_UPDATE_REQUIRES_STANDARD: active Full System (YOLO) must be independently revoked by the local operator before release acceptance");
+}
 async function healthy(
   c: ServiceConfig,
   commit?: string,
@@ -831,6 +845,7 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
       path.join(root, "releases", job.target),
       jobDirectory(root, id),
     );
+    await requireStandardServiceMode(job.before);
     if (hash(await fs.readFile(job.before.env_file)) !== job.env_hash)
       throw Error("SERVICE_CREDENTIAL_SOURCE_CHANGED");
     await record(job, { status: "STOPPING" });
@@ -966,6 +981,7 @@ export async function updateService(
 ): Promise<Record<string, unknown>> {
   const c = await readServiceConfig(root);
   if (!c) throw Error("SERVICE_NOT_INSTALLED");
+  await requireStandardServiceMode(c);
   const staged = await stageVerifiedGithubRelease(ref, root);
   if (staged.commit === c.current) {
     await verifyRelease(staged.release, c.current);
@@ -978,6 +994,7 @@ export async function requestRollback(
 ): Promise<Record<string, unknown>> {
   const c = await readServiceConfig(root);
   if (!c) throw Error("SERVICE_NOT_INSTALLED");
+  await requireStandardServiceMode(c);
   if (c.last_operation === "rollback")
     return { already_rolled_back: true, current: c.current };
   if (!c.previous) throw Error("SERVICE_NO_PREVIOUS_RELEASE");

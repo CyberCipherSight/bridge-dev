@@ -38,6 +38,15 @@ implementation used a separate main checkout.
   without any default exposure, and provider enable/disable proposals preserving
   reviewed tool names/classes, private-network opt-in and credential references.
 
+## Later CLI/release safety corrections (2026-11-15)
+
+- `mode standard` and `mode yolo --off` now report success only if the
+  independent operator call succeeds **and** the protected mode reads STANDARD.
+  A rejected or unconfirmed revocation returns a nonzero exit status.
+- Portable service update/rollback explicitly refuse an active Full System
+  lease before release acceptance, and the detached worker checks again before
+  cutover. This avoids running STANDARD-only destructive-denial probes under root.
+
 ## Verification
 
 The local gates are build, unit suite, policy, portable, CLI, extensions,

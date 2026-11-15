@@ -79,6 +79,14 @@ try {
   const src=fs.readFileSync("src/cli.ts","utf8");
   assert.match(src,/policygate-project/);
   assert.doesNotMatch(src,/sudo setfacl|sudo mount --bind|sudo umount/);
+  // A failed operator revocation must never be reported as a successful mode change.
+  // No real controller/lease is invoked by this portable regression test.
+  const modeSwitch = src.slice(src.indexOf("async function cmdMode("),src.indexOf("function cmdProject("));
+  assert.match(modeSwitch,/if \(hostControllerAvailable\(\)\) \{\s*if \(!runOperator\(\["mode","standard"\]\)\) return;/);
+  assert.match(modeSwitch,/if \(args.includes\("--off"\)\) \{\s*if \(!runOperator\(\["mode","standard"\]\)\) return;/);
+  assert.equal((modeSwitch.match(/verified\.mode !== "STANDARD"/g)||[]).length,2);
+  assert.match(modeSwitch,/STANDARD transition not confirmed/);
+  assert.match(modeSwitch,/Full System revocation not confirmed/);
 
   const kp=generateKeyPairSync("ed25519"),now=Date.now();
   const lease={mode:"dangerous",expires_at:now+180000,nonce:"hello"};

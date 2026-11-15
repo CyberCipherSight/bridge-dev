@@ -67,6 +67,16 @@ Artifact retention is 30 days; an expired artifact is a precise blocker. The
 initial local bootstrap release is explicitly marked operator-seeded, not CI
 verified. A dirty unmarked checkout cannot become a bootstrap release.
 
+**Full System maintenance gate:** The portable release acceptance deliberately
+checks that privileged and destructive commands are denied. An active signed
+Full System (YOLO) lease makes those probes inappropriate. Therefore service
+update and rollback now require an authenticated, healthy **STANDARD** gateway
+and refuse YOLO with `SERVICE_UPDATE_REQUIRES_STANDARD` before staging or
+stopping production. The detached worker repeats this check immediately before
+cutover. Only the independent local operator can change the lease; service
+commands never switch modes automatically. Preserve an active YOLO installation
+until the operator explicitly authorizes a STANDARD maintenance window.
+
 A single exclusive update lock and persistent job UUID prevent blind duplicate
 updates. The on-demand `systemd-run --user` controller is independent of gateway
 connections. It has a 180-second deadline and an `ExecStopPost` rollback guard.
