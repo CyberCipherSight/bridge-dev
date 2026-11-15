@@ -75,6 +75,7 @@ export interface McpSession {
   policy: PolicySession;
   lastAccessedAt: number;
   createdAt: number;
+  toolsReady?:Promise<void>;
 }
 
 export interface SessionManagerConfig {
@@ -225,6 +226,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
       [config.projectMemoryInstructions, hookInstructions].filter(Boolean).join("\n\n"),
       policySession
     );
+    let toolsReady:Promise<void>|undefined;
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: preferredSessionId
@@ -240,6 +242,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
           policy: policySession,
           lastAccessedAt: Date.now(),
           createdAt: existing?.createdAt ?? Date.now(),
+          toolsReady,
         };
         clearPendingRecovery(sid);
         console.log(`[MCP] Session initialized: ${sid}`);
@@ -266,9 +269,9 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
     };
 
     await mcpServer.connect(transport);
-    // Native tools must be available immediately. Upstream discovery can spawn
-    // local processes or wait on remote MCPs, so publish it when ready instead.
-    void refreshProxiedTools(mcpServer, getUpstreamManager())
+    // Initialization and native calls remain immediate. The first tools/list waits
+    // for bounded optional discovery so caching clients receive a complete snapshot.
+    toolsReady = refreshProxiedTools(mcpServer, getUpstreamManager())
       .then(() => mcpServer.sendToolListChanged())
       .catch((error) => console.warn("[MCP] Upstream tool refresh failed:", error));
 
@@ -280,6 +283,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
         policy: policySession,
         lastAccessedAt: Date.now(),
         createdAt: Date.now(),
+        toolsReady,
       }
     );
   }
@@ -382,6 +386,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
 
       const sid = headerSessionId || session.transport.sessionId;
       const run = async () => {
+        if(body&&typeof body==="object"&&"method"in body&&body.method==="tools/list")await session.toolsReady;
         await session.transport.handleRequest(req, res, body);
         const activeSid = session.transport.sessionId;
         if (activeSid) touch(activeSid);
@@ -404,6 +409,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
         session.transport.sessionId || (req.headers["mcp-session-id"] as string | undefined);
       if (sid) touch(sid);
       const run = async () => {
+        if(body&&typeof body==="object"&&"method"in body&&body.method==="tools/list")await session.toolsReady;
         await session.transport.handleRequest(req, res, body);
       };
       // GET mo SSE stream song lau: handleRequest chi resolve khi stream dong.
@@ -454,6 +460,7 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
 
       const patchedReq = withSessionIdHeader(req, staleSessionId, protocolVersion);
       await enqueueSessionOp(staleSessionId, async () => {
+        if(body&&typeof body==="object"&&"method"in body&&body.method==="tools/list")await recovered.toolsReady;
         await recovered.transport.handleRequest(patchedReq, res, body);
       });
       return true;

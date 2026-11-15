@@ -58,7 +58,7 @@ async function waitFor(action) {
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw Error("Browser fixture timeout: " + logs.slice(-1000));
+  throw Error("Browser fixture timeout; binary="+binary+" exit="+browser?.exitCode+" signal="+browser?.signalCode+": " + logs.slice(-4000));
 }
 try {
   gateway = spawn(process.execPath, ["dist/index.js"], {
@@ -99,10 +99,12 @@ try {
         XDG_CACHE_HOME: path.join(root, "browser-cache"),
         TMPDIR: os.tmpdir(),
       },
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
     },
   );
+  browser.stdout.on("data", (b) => (logs = (logs + b).slice(-12000)));
+  browser.on("error",error=>{logs=(logs+" browser startup: "+error.message).slice(-12000);});
   browser.stderr.on("data", (b) => (logs = (logs + b).slice(-12000)));
   const debugPort = await waitFor(async () =>
     Number(

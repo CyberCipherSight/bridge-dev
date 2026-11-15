@@ -108,3 +108,9 @@ provider registration. This prevents a later install from resurrecting a removed
 provider. Failed connection tests retain a non-secret diagnostic in provider
 status; a successful test clears it. Both paths are covered by the independent
 HTTP lifecycle regression.
+
+The first HTTP `tools/list` waits for the session's bounded optional discovery
+promise, so a caching client sees enabled approved tools without a retry loop.
+Initialization and native calls do not wait for that inventory; failed optional
+providers still leave native tools available. This promise carries metadata only
+and does not grant or transfer context authorization.

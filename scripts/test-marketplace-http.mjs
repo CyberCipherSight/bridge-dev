@@ -119,7 +119,10 @@ try {
     name: "Reviewed fixture",
     transport: "stdio",
     command: process.execPath,
-    args: [path.resolve("scripts/mock-stdio-mcp.mjs")],
+    args: [
+      path.resolve("scripts/mock-stdio-mcp.mjs"),
+      "--initialize-delay=300",
+    ],
   });
   assert.equal(definition.status, 200);
   assert.equal(definition.data.discovery.components[0].provider.enabled, false);
@@ -151,12 +154,7 @@ try {
       requestInit: { headers: { Authorization: "Bearer " + token } },
     }),
   );
-  let listed = [];
-  for (let n = 0; n < 80; n++) {
-    listed = (await client.listTools()).tools;
-    if (listed.some((t) => t.name === "fixture__echo")) break;
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  const listed = (await client.listTools()).tools;
   assert.ok(
     listed.some((t) => t.name === "fixture__echo"),
     JSON.stringify((await api("/api/extensions")).data.providers) +

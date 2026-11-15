@@ -37,4 +37,5 @@ jobs:
         shell: bash
         run: |
           export BRIDGEDEV_TEST_BROWSER="$(command -v google-chrome)"
+          "$BRIDGEDEV_TEST_BROWSER" --version
           pnpm run test:browser

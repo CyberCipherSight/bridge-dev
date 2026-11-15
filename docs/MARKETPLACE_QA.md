@@ -14,6 +14,7 @@ connectivity.
 | Missing REA upstream | Direct REA was available to Codex but BridgeDev's registry was empty. A separate reviewed, pinned MCP registration is required; the skill remains independent. |
 | Incompatible discovery/schema | REA 6.9.0 advertised 255 tools and a 4,655,064-byte complete discovery payload. Its documented compact output profile fits the existing transport limit. Bounded local schema references work; unsafe/unsupported tools are refused individually. |
 | Removed provider resurrection | Registry-only removal left a managed lock entry, allowing later installs to reintroduce the provider. Removal now uses the owning extension scope and removes the entry/content. |
+| Initial manifest race | A real delayed stdio fixture was missing from the first HTTP `tools/list`. The session now waits for its bounded discovery promise on list requests, without moving authorization or delaying initialize/native calls. The negative control fails without that barrier; independent clients pass with it. |
 | Lost test diagnostic | Failed provider tests were not retained in status. A non-secret diagnostic is retained and cleared by a successful test. |
 | Broken Git commit pins | Cloning with a commit as `--branch` failed. Disposable bare fetch now resolves the requested commit, verifies exact hash pins, and supports literal scoped GitHub directories. Encoded traversal is rejected before URL normalization. |
 | Assumed connection identity | Catalog names are not proof of provider identity. State uses pinned installed provenance or explicit operator binding, and plugin availability starts unknown. |
@@ -48,8 +49,9 @@ read tool and denied an unapproved write. Both providers were disabled and their
 process trees removed. The pinned REA npm archive was SHA-512 integrity-verified,
 with bounded extraction and no hooks or optional engine installation.
 
-A separate read-only primary-source discovery confirmed the commit-pinned
-Anthropic brand-guidelines GitHub directory, its two files and exact source hash.
+Separate manual real-source acceptance imported the commit-pinned Anthropic
+brand-guidelines GitHub directory, enabled and loaded it, then disabled and
+removed it from disposable state. Its two files and exact source hash matched.
 Metadata verification is distinct from executable installation and invocation.
 
 ## Operational limits

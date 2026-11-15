@@ -25,5 +25,7 @@ if(process.env.PROVIDER_CHILD_FILE){
 }
 server.registerTool("environment",{inputSchema:{}},async()=>({content:[{type:"text",text:JSON.stringify(Object.keys(process.env).filter(key=>key!=="PROVIDER_CHILD_FILE"&&process.env[key]))}]}));
 
+const delay = process.argv.find(arg=>arg.startsWith("--initialize-delay="));
+if(delay)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,Number(delay.split("=")[1])||0)));
 const transport = new StdioServerTransport();
 await server.connect(transport);
