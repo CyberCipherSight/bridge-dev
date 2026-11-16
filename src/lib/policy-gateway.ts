@@ -148,7 +148,10 @@ export class PolicyGate {
     const activationFile = process.env.POLICYGATE_YOLO_ACTIVATION_FILE || (controllerAvailable ? "/var/lib/bridge-dev-operator/active-lease.json" : undefined);
     const yoloPath = process.env.POLICYGATE_YOLO_LEASE || (fs.existsSync("/var/lib/bridge-dev/yolo-lease.json") ? "/var/lib/bridge-dev/yolo-lease.json" : "/var/lib/local-coder-policygate/yolo-lease.json");
     const pubKeyPath = process.env.POLICYGATE_APPROVAL_PUBLIC_KEY || (fs.existsSync("/etc/bridge-dev/operator-public.pem") ? "/etc/bridge-dev/operator-public.pem" : "/etc/local-coder-policygate/operator-public.pem");
-    const authorityFile = this.configPath || (fs.existsSync("/etc/bridge-dev/policygate.json") ? "/etc/bridge-dev/policygate.json" : "/etc/local-coder-policygate/policygate.json");
+    // The activation record belongs to the independently installed root operator.
+    // Portable configPath is user-owned and must NOT be used as the root owner
+    // anchor; otherwise the CLI verifies YOLO while the gateway reports STANDARD.
+    const authorityFile = pubKeyPath;
     try {
       if (fs.existsSync(yoloPath) && fs.existsSync(pubKeyPath)) {
         const content = fs.readFileSync(yoloPath, "utf8");
