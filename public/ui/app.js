@@ -380,12 +380,29 @@ async function overview() {
     ),
     action("Open approvals", () => navigate("approvals")),
   );
-  heading("Updates");
+  heading("Software update");
+  const updateResult = el("div", undefined, { id: "main-update-result", "aria-live": "polite" });
   screen.append(
-    el(
-      "p",
-      "Updates are checked explicitly through each component’s Update preview. Service releases: bridge-dev update --check and bridge-dev update (verified GitHub main). No background registry requests.",
+    el("p", "Checks are manual. No scheduled update service, polling or automatic root-capable deployment."),
+    controls(
+      action("Check GitHub main", async () => {
+        updateResult.replaceChildren(el("p", "Checking GitHub main…"));
+        const result = await api("/api/update/check");
+        const status = result.update_available === true ? "Update available" :
+          result.update_available === false ? "Up to date" : "Installed commit unknown";
+        updateResult.replaceChildren(
+          el("p", status),
+          pre({
+            installed: result.installed_commit || "unknown",
+            main: result.main_commit,
+            checked_at: result.checked_at,
+            command: result.update_available ? "bridge-dev update" : "No update required",
+          }),
+        );
+      }),
     ),
+    updateResult,
+    el("p", "From your local terminal: bridge-dev update --check; bridge-dev update. Updating requires STANDARD mode and passes exact-commit CI, artifact integrity, and rollback acceptance."),
   );
 }
 async function providers() {
