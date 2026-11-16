@@ -28,28 +28,34 @@
         ><button data-tab="approvals">Approvals</button
         ><button data-tab="audit">Audit</button
         ><button data-tab="connection">Connection</button
-        ><button data-tab="settings">Settings</button>
+        ><button data-tab="settings">Settings</button
+        ><button data-tab="security">Access & Security</button>
       </nav>
       <main id="content" tabindex="-1">
         <div class="toolbar">
           <h1 id="title">Overview</h1>
           <button id="refresh">Refresh</button>
         </div>
+        <div id="security-panel" hidden>
+          <h2>Access & Security</h2>
+          <p>Dashboard authentication uses a signed local session. No Admin token is stored in browser JavaScript or persistent storage. If the session expires, run <code>bridge-dev access</code> in your private terminal and open the short-lived dashboard pairing link.</p>
         <form id="login">
-          <label for="admin-credential">Admin credential</label
+          <label for="admin-credential">Admin credential (manual fallback)</label
           ><input
             id="admin-credential"
             type="password"
             autocomplete="off"
             spellcheck="false"
-            required
+            
             aria-describedby="credential-note"
           /><button>Connect</button
           ><button id="disconnect" type="button">Disconnect</button
           ><small id="credential-note"
-            >Local page memory only. Cleared on disconnect or reload.</small
+            >Optional fallback only. Normal login uses a signed HttpOnly session.</small
           >
         </form>
+
+        </div>
         <p id="notice" role="status" aria-live="polite">
           Enter the independent admin credential.
         </p>

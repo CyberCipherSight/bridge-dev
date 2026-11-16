@@ -146,9 +146,14 @@ export class PolicyGate {
   getActiveProfile(): "strict" | "standard" | "dangerous" {
     const controllerAvailable = hostControllerAvailable();
     const activationFile = process.env.POLICYGATE_YOLO_ACTIVATION_FILE || (controllerAvailable ? "/var/lib/bridge-dev-operator/active-lease.json" : undefined);
-    const yoloPath = process.env.POLICYGATE_YOLO_LEASE || (fs.existsSync("/var/lib/bridge-dev/yolo-lease.json") ? "/var/lib/bridge-dev/yolo-lease.json" : "/var/lib/local-coder-policygate/yolo-lease.json");
-    const pubKeyPath = process.env.POLICYGATE_APPROVAL_PUBLIC_KEY || (fs.existsSync("/etc/bridge-dev/operator-public.pem") ? "/etc/bridge-dev/operator-public.pem" : "/etc/local-coder-policygate/operator-public.pem");
-    const authorityFile = this.configPath || (fs.existsSync("/etc/bridge-dev/policygate.json") ? "/etc/bridge-dev/policygate.json" : "/etc/local-coder-policygate/policygate.json");
+    // Keep the gateway's implicit key/lease selection identical to the CLI's
+    // installed-controller priority. Independent env overrides take precedence.
+    const yoloPath = process.env.POLICYGATE_YOLO_LEASE || (fs.existsSync("/var/lib/local-coder-policygate") ? "/var/lib/local-coder-policygate/yolo-lease.json" : "/var/lib/bridge-dev/yolo-lease.json");
+    const pubKeyPath = process.env.POLICYGATE_APPROVAL_PUBLIC_KEY || (fs.existsSync("/etc/local-coder-policygate") ? "/etc/local-coder-policygate/operator-public.pem" : "/etc/bridge-dev/operator-public.pem");
+    // The activation record belongs to the independently installed root operator.
+    // Portable configPath is user-owned and must NOT be used as the root owner
+    // anchor; otherwise the CLI verifies YOLO while the gateway reports STANDARD.
+    const authorityFile = pubKeyPath;
     try {
       if (fs.existsSync(yoloPath) && fs.existsSync(pubKeyPath)) {
         const content = fs.readFileSync(yoloPath, "utf8");

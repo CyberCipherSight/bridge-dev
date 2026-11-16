@@ -67,6 +67,21 @@ Windows dual-boot installations and Windows VMs use the PowerShell command **ins
 
 The persistent service is **optional and Linux-only**. Full System requires a **separately reviewed, independently authorized Linux host controller**; the portable installer does not grant sudo.
 
+## Local Admin dashboard: one-click pairing
+
+Use `bridge-dev access` in a **private interactive terminal** to obtain the
+short-lived **One-click local Admin pairing** link. Open it within 60 seconds;
+no Admin bearer token needs to be typed into the dashboard. The dashboard
+stores only a signed HttpOnly cookie (valid for up to seven days); it survives
+reloads and gateway restarts, and rotating `ADMIN_TOKEN` invalidates it.
+A separate **Access & Security** page contains session controls and the
+optional manual fallback. Unpaired users do not receive a bearer credential
+from an unauthenticated localhost endpoint.
+
+This is a locally trusted browser flow, **not** proof of Unix-user identity:
+other code running as the operator may compromise the local session. Keep
+the Admin listener loopback-only and [review the security model](docs/ADMIN_AUTH.md).
+
 ## Connect ChatGPT Web
 
 1. Run `bridge-dev access` in a private terminal to get your MCP connection URL.
