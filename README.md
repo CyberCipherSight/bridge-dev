@@ -110,7 +110,12 @@ monitor process. Optional `bridge-dev monitor shortcut --key Mod4+Mod1+d
 Sway/i3 binding example. Configure any conflict-free keybinding in your own
 window manager; BridgeDev does not edit or reload compositor files. Existing
 scratchpad bindings remain intact. If a monitor is still using an old token,
-exit and relaunch it to reread the protected configuration.
+exit and relaunch it to reread the protected configuration. Diagnose the
+local monitor with `bridge-dev monitor doctor` (no credential output); a
+401/403 indicates an authorization mismatch, not a dead gateway. The Monitor
+tab displays the verified policy mode from the authenticated gateway (STANDARD
+or dangerous), never from the last local `bridge-dev mode` output. Root
+authorization is only controlled through independent local operator approval.
 
 ## Local Admin dashboard: one-click pairing
 
