@@ -1243,6 +1243,12 @@ async function initializeAdminSession() {
   await refreshAll();
 }
 void initializeAdminSession().catch(showError);
+window.addEventListener("hashchange", () => {
+  // Opening a fresh pairing link in an existing tab is a same-document
+  // navigation; run pairing explicitly instead of waiting for a page reload.
+  if (new URLSearchParams(location.hash.slice(1)).has("pair"))
+    void initializeAdminSession().catch(showError);
+});
 
 $("detail").addEventListener("close", stopActivity);
 document.addEventListener("visibilitychange", () => {
