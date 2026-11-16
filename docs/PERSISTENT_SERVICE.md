@@ -75,6 +75,22 @@ dirty checkouts, changes Funnel, rotates tokens or silently enables YOLO.
 `--no-wait` returns a durable job ID; inspect it before retrying. A service
 restart occurs only as part of the reviewed updater's guarded cutover.
 
+### Optional MCP providers during release acceptance
+
+The independent portable acceptance must always find **every pinned native tool**
+in `profiles/native-tool-counts.json` (52 in the slim profile). A reviewed,
+operator-enabled optional MCP provider may expose additional proxy tools, so
+the total MCP tool count is **not** necessarily the native count. For example,
+52 native tools plus three approved REA guidance tools is 55, not a regression.
+Additional names are accepted only when explicitly permitted by the
+authenticated Admin upstream configuration: an enabled reviewed allowlist,
+or reviewed `all` exposure with individually granted tool permissions.
+Unknown, disabled, duplicate, or missing native tools fail closed.
+
+Deployment acceptance validates approved optional tool schemas but does not
+invoke or start optional tools. All native read-tool and security-isolation
+checks remain mandatory. Rollback is reserved for actual regressions.
+
 ## Layout and updates
 
 Default installation root: `~/.local/share/bridge-dev` (XDG/explicit installation
