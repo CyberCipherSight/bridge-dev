@@ -71,6 +71,20 @@ After a successful local `bridge-dev mode yolo` confirmation, the CLI now offers
 
 ## Maintenance, credential rotation and optional monitor shortcut
 
+Interactive `bridge-dev status`, `bridge-dev access`, `bridge-dev help`,
+`bridge-dev doctor` and related CLI entry points now perform a **bounded,
+read-only main-version check** (six-hour local cache, up to 2.4 seconds on an
+uncached attempt) and suggest an update only when the installed release
+differs. They do **not** install updates automatically or run any background
+updater. JSON/noninteractive calls are never delayed; set
+`BRIDGEDEV_UPDATE_NOTICE=off` to disable the notice. Explicit
+`bridge-dev update --check` always checks the latest SHA.
+
+The authenticated localhost dashboard has an opt-in **Check GitHub main**
+button in Overview, without polling. Once a new release has passed CI, the
+operator can update explicitly; the running MCP connection is not interrupted
+merely because main changed.
+
 On managed Linux installations, run `bridge-dev update --check` to compare the
 installed release with the current GitHub `main` SHA. `bridge-dev update` calls
 the existing exact-SHA, CI-verified, rollback-protected systemd updater. It does
