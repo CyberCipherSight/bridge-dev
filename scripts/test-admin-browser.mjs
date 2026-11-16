@@ -424,6 +424,13 @@ try {
     evaluate('document.getElementById("screen").textContent.includes("Gateway")'),
   );
   assert.equal(await evaluate('document.getElementById("admin-credential").value'), "");
+  // Cookie-only session must authorize the SSE route without an empty bearer header.
+  assert.equal(
+    await evaluate('fetch("/api/activity/stream",{credentials:"same-origin",signal:AbortSignal.timeout(1200)}).then(r=>r.status)'),
+    200,
+  );
+  await evaluate('navigate("monitor")');
+  assert.match(await evaluate("screen.textContent"), /Activity monitor/);
   await evaluate('navigate("security")');
   assert.equal(await evaluate('document.getElementById("security-panel").hidden'), false);
   const replay = await fetch(`http://127.0.0.1:${adminPort}/api/auth/pair`, {
@@ -451,7 +458,7 @@ try {
   });
   assert.ok(smoke.ok && smoke.sections.length === 12);
   console.log(
-    "Admin browser PASS: eleven sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
+    "Admin browser PASS: twelve sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
   );
 } finally {
   ws?.close();
