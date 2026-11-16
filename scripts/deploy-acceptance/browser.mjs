@@ -158,6 +158,7 @@ export async function acceptAdminBrowser({
     );
     const sections = [
       "overview",
+      "monitor",
       "extensions",
       "skills",
       "instructions",
