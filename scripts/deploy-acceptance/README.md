@@ -5,6 +5,14 @@ changes modes, installs providers or edits production configuration. Credentials
 are read from the selected protected environment file into process memory only.
 The independent official SDK client validates advertised output schemas.
 
+The portable service acceptance separately validates the pinned native API
+and explicitly reviewed optional provider proxies. The **native inventory
+must match the manifest**; additional MCP tools must match the authenticated
+Admin upstream allowlist and provider exposure review. A 52-native + 3-REA
+installation is acceptable; an unreviewed or unknown extra tool is not.
+No optional provider is invoked merely to pass the update, and all native
+read/security acceptance cases still execute.
+
 ```sh
 node scripts/deploy-acceptance/run.mjs fixtures RELEASE ENV_FILE GATEWAY_PID ROOT_PRIVATE_PLAN
 node scripts/deploy-acceptance/run.mjs accept RELEASE ENV_FILE GATEWAY_PID ROOT_PRIVATE_PLAN
