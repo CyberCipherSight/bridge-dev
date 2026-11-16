@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id),
   screen = $("screen");
 const sections = [
   "overview",
+  "monitor",
   "marketplace",
   "extensions",
   "skills",
@@ -291,6 +292,7 @@ async function render() {
   screen.replaceChildren();
   if (section === "marketplace") return marketplaceView();
   if (section === "overview") return overview();
+  if (section === "monitor") return monitorPage();
   if (section === "extensions") return providers();
   if (["skills", "instructions", "packs"].includes(section)) return contents();
   if (section === "approvals") return approvals();
@@ -308,6 +310,42 @@ function securityPage() {
     el("p", "Disconnect clears the browser cookie. Credentials and signed operator modes are managed separately."),
   );
 }
+
+async function monitorPage() {
+  heading("Activity monitor");
+  pairs({
+    "Gateway": health.status || "unavailable",
+    "Policy": health.policy_mode || "unavailable",
+    "Full machine access": state(health.full_machine_access),
+    "MCP sessions": health.active_sessions ?? "unknown",
+    "Running PID": health.pid ?? "unknown",
+    "Current release": health.commit || "unknown",
+  });
+  screen.append(
+    el("p","On-demand monitoring only. Live streaming starts only when you choose it and pauses when the tab is hidden."),
+    controls(
+      action("Open live activity & history", activityDialog),
+      action("Refresh monitor", async () => await refreshAll()),
+      action("View durable audit", async () => await navigate("audit")),
+    ),
+  );
+  heading("Recent tool calls");
+  const activity=await api("/api/activity?limit=30");
+  const items=Array.isArray(activity.entries)?activity.entries:[];
+  table(
+    ["Time","Type","Tool / event","Status","Summary"],
+    items.map(a=>[a.time||"",a.kind||"",a.tool||a.action||"",a.status||"",
+      a.summary||a.target||""]),
+    "Recent BridgeDev activity",
+  );
+  heading("Optional desktop shortcut");
+  screen.append(
+    el("p","Use bridge-dev monitor to launch the installed local Sway scratchpad/TUI, or open this localhost dashboard on other desktops. You may bind any unused shortcut in your own window manager."),
+    pre("bridge-dev monitor\nbridge-dev monitor shortcut --key Mod4+Mod1+d --install-desktop\nbridge-dev update --check"),
+    el("p","Shortcut registration is optional; it never modifies Sway configuration or installs a persistent daemon."),
+  );
+}
+
 async function overview() {
   const [service, audit, queue] = await Promise.all([
     api("/api/service/status"),
@@ -346,7 +384,7 @@ async function overview() {
   screen.append(
     el(
       "p",
-      "Updates are checked explicitly through each component’s Update preview. Service releases: bridge-dev service update <sha-or-tag>. No background registry requests.",
+      "Updates are checked explicitly through each component’s Update preview. Service releases: bridge-dev update --check and bridge-dev update (verified GitHub main). No background registry requests.",
     ),
   );
 }
@@ -896,8 +934,10 @@ async function activityDialog() {
     activityAbort = controller;
     void (async () => {
       try {
+        const fallback = $("admin-credential").value.trim();
         const response = await fetch("/api/activity/stream", {
-          headers: { Authorization: "Bearer " + $("admin-credential").value },
+          credentials: "same-origin",
+          headers: fallback ? { Authorization: "Bearer " + fallback } : {},
           cache: "no-store",
           signal: controller.signal,
         });
