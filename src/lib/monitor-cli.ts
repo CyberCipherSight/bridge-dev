@@ -12,6 +12,40 @@ export function swayShortcut(key:string):string {
 }
 export async function monitorCli(args:string[]):Promise<void> {
   const home=os.homedir();
+  if(args[0]==="doctor" && args.length===1){
+    // Distinguish an offline gateway from a stale Admin token after rotation.
+    // Only the local authenticated listener is inspected; no token is printed.
+    const env=path.join(process.env.XDG_CONFIG_HOME||path.join(home,".config"),"bridge-dev",".env");
+    const raw=await fsp.readFile(env,"utf8").catch(()=> "");
+    const tokenLine=raw.split(/\r?\n/).filter(x=>x.startsWith("ADMIN_TOKEN="));
+    const token=tokenLine.length===1 ? tokenLine[0].slice(12).replace(/^['"]|['"]$/g,"") : "";
+    const portLine=raw.split(/\r?\n/).find(x=>x.startsWith("ADMIN_PORT="));
+    const rawPort=(portLine?.slice(11)||process.env.ADMIN_PORT||"3001").trim();
+    if(!/^\d{1,5}$/.test(rawPort)||Number(rawPort)>65535||Number(rawPort)<1)
+      throw Error("MONITOR_INVALID_ADMIN_PORT");
+    if(!token)throw Error("MONITOR_ADMIN_TOKEN_NOT_CONFIGURED");
+    try{
+      const response=await fetch("http://127.0.0.1:"+rawPort+"/health",{
+        method:"GET",headers:{Authorization:"Bearer "+token},
+        signal:AbortSignal.timeout(1800),cache:"no-store",
+      });
+      if(response.status===401||response.status===403){
+        console.log("Admin listener reachable but credentials rejected ("+response.status+").");
+        console.log("The monitor may be using a token rotated after the service started. Restart only BridgeDev after reviewing credential drift, then reopen the monitor.");
+        return;
+      }
+      if(!response.ok){console.log("Admin listener HTTP "+response.status);return;}
+      const health=await response.json() as Record<string,unknown>;
+      console.log(JSON.stringify({
+        reachable:true,pid:health.pid??null,security_mode:health.policy_mode??"unknown",
+        full_machine_access:health.full_machine_access===true,
+        active_sessions:health.active_sessions??null,commit:health.commit??null,
+      },null,2));
+    }catch(err){
+      console.log("Admin listener unreachable (network/port/timeout), not an authorization verdict: "+(err instanceof Error?err.name:"unknown"));
+    }
+    return;
+  }
   if(args[0]==="shortcut"){
     const ki=args.indexOf("--key");
     if(ki>=0&&!args[ki+1])throw Error("MONITOR_SHORTCUT_KEY_MISSING");
@@ -35,7 +69,7 @@ export async function monitorCli(args:string[]):Promise<void> {
     console.log("No compositor configuration or service changed.");
     return;
   }
-  if(args.length)throw Error("Usage: bridge-dev monitor [shortcut [--key Mod4+Mod1+d] [--install-desktop]]");
+  if(args.length)throw Error("Usage: bridge-dev monitor [doctor | shortcut [--key Mod4+Mod1+d] [--install-desktop]]");
   const toggle=path.join(home,".local/bin","scratch-toggle");
   const tui=path.join(home,".local/bin","bridge-dev-monitor");
   if(process.env.SWAYSOCK&&executable(toggle)&&executable(tui)){
