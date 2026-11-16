@@ -48,6 +48,18 @@ No reboot is performed by installation. Verify manually after reboot: check
 `loginctl show-user "$USER" -p Linger`, `bridge-dev doctor` and the authenticated
 MCP acceptance calls below. Check that ports 3000 and 3001 belong to one PID.
 
+## One-command verified updates
+
+`bridge-dev update --check` retrieves the current GitHub `main` SHA
+through the operator's authenticated `gh` CLI and reports whether the installed
+release differs, without modifying the service.
+`bridge-dev update` calls the existing `service update <exact-sha>` workflow,
+which checks successful exact-commit CI, verified artifacts/digests, STANDARD
+mode and protected rollback acceptance. It never runs `git pull`, overwrites
+dirty checkouts, changes Funnel, rotates tokens or silently enables YOLO.
+`--no-wait` returns a durable job ID; inspect it before retrying. A service
+restart occurs only as part of the reviewed updater's guarded cutover.
+
 ## Layout and updates
 
 Default installation root: `~/.local/share/bridge-dev` (XDG/explicit installation
