@@ -8,6 +8,7 @@ import type { Server } from "http";
 import type { McpUpstreamManager } from "../lib/mcp-upstream-manager.js";
 import { createAdminRouter } from "./routes.js";
 import { adminAuth, localhostOnly } from "./localhost-guard.js";
+import { pairAdminSession, endAdminSession } from "./local-session.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -65,7 +66,11 @@ export function startAdminServer(options: AdminServerOptions): Server {
   const uiDir = path.resolve(__dirname, "../../public/ui");
   app.use("/ui", express.static(uiDir));
   app.get("/", (_req, res) => res.redirect("/ui/"));
+  // Local operator pairing requires a signed, one-time CLI code.
+  // Never return ADMIN_TOKEN from an unauthenticated loopback endpoint.
+  app.post("/api/auth/pair", pairAdminSession);
   app.use(adminAuth);
+  app.post("/api/auth/logout", endAdminSession);
   app.use((_req,res,next)=>{res.setHeader("Cache-Control","no-store");res.setHeader("Referrer-Policy","no-referrer");next();});
   app.use(operationsRouter(options.manager));
   app.use(extensionRouter(options.manager));
