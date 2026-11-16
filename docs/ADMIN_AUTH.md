@@ -30,6 +30,24 @@ of a browser client. Local malware running as the same operator can access
 browser sessions and/or operator files; HTTP cookies do not sandbox a compromised
 local account. Avoid calling this OS-level authentication.
 
+## Credential rotation and private backup
+
+`bridge-dev token rotate admin [--restart]` and
+`bridge-dev token rotate mcp [--restart]` require a private interactive
+terminal and operator confirmation. The private configuration must be a
+single-link, regular file owned by the operator with mode 0600 in a directory
+that is not group/world writable. Duplicate/missing token definitions fail
+closed. The command saves a protected 0600 sibling backup first, writes a
+new 64-character hex secret to a private temporary file and atomically renames
+it into place, preserving all other env values. Tokens are not printed.
+
+`--restart` restarts only the installed user service (disconnecting existing
+sessions). Without it, running service credentials drift until intentionally
+restarted. An Admin rotation invalidates HttpOnly browser sessions; use
+`bridge-dev access` to re-pair. An MCP rotation invalidates existing clients'
+URL tokens. Previous secrets persist in the backup and must be protected or
+removed after successful verification.
+
 ## Credentials and rotation
 
 `ADMIN_TOKEN` and `MCP_TOKEN` are distinct. Only the Admin token is involved
