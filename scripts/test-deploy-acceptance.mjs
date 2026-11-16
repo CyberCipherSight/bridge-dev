@@ -7,11 +7,55 @@ import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {createFixtures,activateFixtures,preflightFixtures,cleanupFixtures} from './deploy-acceptance/fixtures.mjs';
 import {acceptGateway} from './deploy-acceptance/client.mjs';
+import {verifyGatewayToolInventory} from './deploy-acceptance/tool-inventory.mjs';
 import {fixturePorts} from './test-ports.mjs';
 import {loadProjectSkill,loadProjectSkills} from '../dist/lib/skills-loader.js';
 import {readFileSafe} from '../dist/lib/sudo-fs.js';
 import {readSystemDocument} from '../dist/lib/system-context.js';
 if(!process.env.BRIDGEDEV_TEST_ROOT)throw Error('Use isolated-tests.mjs');
+
+// Regression: the live gateway exposes 52 pinned native tools + 3 explicitly
+// operator-allowed REA guidance tools. This must not roll back a safe release.
+const nativeInventory=JSON.parse(fs.readFileSync("profiles/native-tool-counts.json","utf8")).tools.slim;
+const nativeTools=nativeInventory.map(name=>({name}));
+const optionalTools=[
+  "rea__search_guidance",
+  "rea__read_guidance_section",
+  "rea__guided_workflows",
+].map(name=>({name}));
+const provider={id:"rea",enabled:true,reviewed:true,expose:"allowlist",
+  tools:["search_guidance","read_guidance_section","guided_workflows"],
+  tool_permissions:{search_guidance:"R",read_guidance_section:"R",guided_workflows:"R"}};
+const toolsWithRea=[...nativeTools,...optionalTools];
+assert.equal(nativeInventory.length,52);
+assert.equal(verifyGatewayToolInventory(nativeTools,nativeInventory,[]).optional,0);
+const allowedInventory=verifyGatewayToolInventory(toolsWithRea,nativeInventory,[provider]);
+assert.equal(allowedInventory.native,52);
+assert.equal(allowedInventory.optional,3);
+assert.equal(allowedInventory.optional_names.length,3);
+for(const unsafe of [
+  {toolList:[...nativeTools.slice(1),...optionalTools],providers:[provider]},
+  {toolList:[...toolsWithRea,{name:"rea__unreviewed"}],providers:[provider]},
+  {toolList:[...toolsWithRea,optionalTools[0]],providers:[provider]},
+  {toolList:toolsWithRea,providers:[{...provider,enabled:false}]},
+  {toolList:toolsWithRea,providers:[{...provider,expose:"none"}]},
+  {toolList:toolsWithRea,providers:[{...provider,tools:["search_guidance"]}]},
+  {toolList:toolsWithRea,providers:[]},
+]) {
+  assert.throws(()=>verifyGatewayToolInventory(unsafe.toolList,nativeInventory,unsafe.providers),
+    /ACCEPTANCE_(NATIVE_TOOLS_MISSING|UNREVIEWED_PROVIDER_TOOLS|DUPLICATE_TOOLS)/);
+}
+// "all" is accepted only after explicit review and per-tool permission.
+assert.equal(verifyGatewayToolInventory(
+  [...nativeTools,{name:"rea__guided_workflows"}],nativeInventory,
+  [{...provider,expose:"all",tools:undefined}]
+).optional,1);
+assert.throws(()=>verifyGatewayToolInventory(
+  [...nativeTools,{name:"rea__guided_workflows"}],nativeInventory,
+  [{...provider,expose:"all",reviewed:false}]
+),/UNREVIEWED_PROVIDER_TOOLS/);
+
+
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'bridge-acceptance-test-')),work=path.join(root,'work');fs.mkdirSync(work);let plan,gateway,logs='';
 const [port,adminPort]=await fixturePorts(2),token=randomBytes(32).toString('hex'),admin=randomBytes(32).toString('hex');
 const policy=JSON.parse(fs.readFileSync(process.env.POLICYGATE_POLICY_FILE));Object.assign(policy,{profile:'standard',writable_roots:[work],protected_paths:[],secret_paths:[],hard_paths:[],approval_paths:[],audit_log:path.join(root,'audit.jsonl')});
