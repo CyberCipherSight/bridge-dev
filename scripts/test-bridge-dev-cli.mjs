@@ -10,6 +10,7 @@ import { formatMcpEndpoint, isValidSignedLease, inspectLocalMode,
 import { HashAudit } from "../dist/lib/hash-audit.js";
 import {rotateCredentialFile,inspectCredentialFile} from "../dist/lib/token-rotation.js";
 import {swayShortcut} from "../dist/lib/monitor-cli.js";
+import {checkLatestMain,fetchLatestMainSha,formatUpdateHint,UPDATE_CHECK_TTL_MS} from "../dist/lib/release-notice.js";
 import {offerPersistentBootService} from "../dist/lib/yolo-autostart.js";
 import {parseCliArguments,cliOption} from "../dist/lib/cli-arguments.js";
 
@@ -154,6 +155,25 @@ try {
   assert.throws(()=>swayShortcut("Mod4+Mod1+d;rm"),/INVALID_KEY/);
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/case "update":/);
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/repos\/kmanisk\/bridge-dev\/commits\/main/);
+  // An interactive CLI check is read-only, cached, and never starts a daemon.
+  const updateCache=path.join(tmp,"main-sha.json");
+  const stable="a".repeat(40),latest="b".repeat(40);
+  let calls=0;
+  const fakeFetch=async()=>{calls++;return new Response(JSON.stringify({sha:latest}),{status:200});};
+  const first=await checkLatestMain(stable,{cacheFile:updateCache,now:1000000000000,fetcher:fakeFetch});
+  assert.equal(first.update_available,true);
+  assert.equal(first.source,"github");
+  assert.match(formatUpdateHint(first),/bridge-dev update --check/);
+  assert.equal(fs.statSync(updateCache).mode&0o777,process.platform==="win32"?(fs.statSync(updateCache).mode&0o777):0o600);
+  const cacheHit=await checkLatestMain(stable,{cacheFile:updateCache,now:1000000001000,fetcher:()=>{throw Error("cache must not fetch");}});
+  assert.equal(cacheHit.source,"cache");
+  assert.equal(calls,1);
+  const cacheMiss=await checkLatestMain(stable,{cacheFile:updateCache,now:1000000000000+UPDATE_CHECK_TTL_MS+1,fetcher:fakeFetch});
+  assert.equal(cacheMiss.source,"github");
+  assert.equal(calls,2);
+  assert.equal(formatUpdateHint({...first,current:latest,update_available:false}),null);
+  await assert.rejects(fetchLatestMainSha(async()=>new Response(JSON.stringify({sha:"invalid"}),{status:200})),/INVALID_MAIN_COMMIT/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/BRIDGEDEV_UPDATE_NOTICE/);
   const blocked=run(["token","rotate","admin"]);
   assert.notEqual(blocked.status,0);
   assert.match(blocked.stderr,/TOKEN_ROTATION_LOCAL_TTY_REQUIRED/);
