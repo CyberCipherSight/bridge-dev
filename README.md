@@ -69,6 +69,35 @@ The persistent service is **optional and Linux-only**. Full System requires a **
 
 After a successful local `bridge-dev mode yolo` confirmation, the CLI now offers a **second, default-No prompt** to enable BridgeDev at boot. Answer `y` to install/enable its existing systemd user unit (creating the normal `default.target.wants` symlink) and, when necessary, run `sudo loginctl enable-linger` for your user. It verifies both settings, never restarts a working gateway, and leaves Tailscale, tokens, and the signed YOLO lease alone. Answer `n` to keep the existing service configuration. If a fresh unit is installed with standard sandboxing, root-command support still requires separately reviewed controller-compatible service configuration; no sandbox is silently weakened. See [persistent service](docs/PERSISTENT_SERVICE.md).
 
+## Maintenance, credential rotation and optional monitor shortcut
+
+On managed Linux installations, run `bridge-dev update --check` to compare the
+installed release with the current GitHub `main` SHA. `bridge-dev update` calls
+the existing exact-SHA, CI-verified, rollback-protected systemd updater. It does
+**not** run `git pull`, modify dirty source checkouts or silently rotate tokens.
+`--no-wait` returns a durable job ID. A healthy STANDARD gateway is required:
+revoke YOLO locally before updating and reactivate it deliberately afterwards.
+For a portable installation without systemd, use its documented installer.
+
+From an **interactive local terminal**, `bridge-dev token rotate admin` or
+`bridge-dev token rotate mcp` creates a private timestamped mode-0600 backup
+of the original `~/.config/bridge-dev/.env` and atomically replaces **only**
+the requested token with new randomness. Values are not printed. Add
+`--restart` to explicitly restart the managed user service; without it, the
+running process keeps its old credential until restarted. Rotating Admin
+invalidates browser sessions and requires `bridge-dev access` to pair again.
+Rotating MCP requires reconnecting client URLs. Backups retain secrets; review
+and remove them after successful verification.
+
+`bridge-dev monitor` reuses an existing local Sway scratchpad/TUI when
+available, or opens the localhost dashboard. It requires no always-running
+monitor process. Optional `bridge-dev monitor shortcut --key Mod4+Mod1+d
+--install-desktop` writes a user-owned XDG application launcher and prints a
+Sway/i3 binding example. Configure any conflict-free keybinding in your own
+window manager; BridgeDev does not edit or reload compositor files. Existing
+scratchpad bindings remain intact. If a monitor is still using an old token,
+exit and relaunch it to reread the protected configuration.
+
 ## Local Admin dashboard: one-click pairing
 
 Use `bridge-dev access` in a **private interactive terminal** to obtain the
