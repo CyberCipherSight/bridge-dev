@@ -9,6 +9,8 @@ import "dotenv/config";
 import {startConfiguredService,installService,controlService} from "./lib/service-manager.js";
 import {offerPersistentBootService} from "./lib/yolo-autostart.js";
 import {serviceCli} from "./lib/service-cli.js";
+import {rotateCredentialFile,inspectCredentialFile,credentialFilePath} from "./lib/token-rotation.js";
+import {monitorCli} from "./lib/monitor-cli.js";
 import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
 import {extensionCli,operatorApi} from "./lib/extension-cli.js";
@@ -885,6 +887,66 @@ function cmdLogin(args: string[] = []) {
   console.log("Use 'bridge-dev login --generate' to create a new token; existing tokens are never printed.");
 }
 
+
+async function cmdUpdate(args: string[], json: boolean): Promise<void> {
+  if (process.platform !== "linux") throw Error("UPDATE_SERVICE_UNSUPPORTED: managed Linux service required");
+  if (args.some(x => !["--check", "--no-wait"].includes(x)) ||
+      (args.includes("--check") && args.includes("--no-wait")))
+    throw Error("Usage: bridge-dev update [--check | --no-wait]");
+  const status=await userServiceStatus();
+  if (!status.installed) throw Error("UPDATE_SERVICE_NOT_INSTALLED: use bridge-dev service install");
+  // Resolve main once; the existing updater independently validates exact SHA,
+  // successful CI, artifact digest and rollback before changing the live service.
+  const checked=spawnSync("gh",["api","repos/kmanisk/bridge-dev/commits/main","--jq",".sha"],{
+    encoding:"utf8",timeout:16000,maxBuffer:8192,
+  });
+  const sha=String(checked.stdout||"").trim();
+  if (checked.error || checked.status!==0 || !/^[a-f0-9]{40}$/.test(sha))
+    throw Error("UPDATE_GITHUB_UNAVAILABLE: authenticate gh locally; no source fallback");
+  if (args.includes("--check")) {
+    const report={installed:true,current:status.current,latest_main:sha,update_available:status.current!==sha};
+    console.log(JSON.stringify(json?{ok:true,data:report}:report,null,2));
+    return;
+  }
+  if (status.current===sha) {
+    console.log("BridgeDev already at latest main: " + sha);
+    return;
+  }
+  console.log("Updating from verified GitHub main release "+sha+"; no git pull or token changes.");
+  console.log("This requires STANDARD mode, retains rollback and tracks an independent update job.");
+  await serviceCli(["service","update",sha,...(args.includes("--no-wait")?["--no-wait"]:[])],json);
+}
+async function cmdToken(args: string[]): Promise<void> {
+  if (args[0]==="status" && args.length===1) {
+    console.log(JSON.stringify(await inspectCredentialFile(),null,2)); return;
+  }
+  const kind=args[1];
+  if(args[0]!=="rotate"||!["admin","mcp"].includes(kind)||
+      args.some((a,i)=>i>1&&a!=="--restart"))
+    throw Error("Usage: bridge-dev token status | token rotate <admin|mcp> [--restart]");
+  if(!process.stdin.isTTY||!process.stdout.isTTY)
+    throw Error("TOKEN_ROTATION_LOCAL_TTY_REQUIRED: run in your own terminal");
+  const prompt=createInterface({input:process.stdin,output:process.stdout});
+  try {
+    const answer=await prompt.question("Rotate "+kind.toUpperCase()+
+      " token? The previous .env will be backed up privately. [y/N] ");
+    if(!/^(y|yes)$/i.test(answer.trim())){console.log("Token unchanged.");return;}
+  } finally {prompt.close();}
+  const changed=await rotateCredentialFile(credentialFilePath(),kind as "admin"|"mcp");
+  console.log("Rotated "+kind.toUpperCase()+" token in "+changed.file+"; private backup: "+changed.backup);
+  console.log("The backup retains old secrets; remove it only after verification.");
+  if(args.includes("--restart")){
+    const status=await userServiceStatus();
+    if(status.installed){
+      console.log("Restarting only bridge-dev.service; active MCP sessions may disconnect.");
+      await serviceCli(["service","restart"],false);
+    } else console.log("No installed service; restart the foreground gateway locally.");
+  } else console.log("The running gateway still has the old token until it is restarted.");
+  console.log(kind==="admin" ?
+    "Re-pair local Admin with bridge-dev access after restart." :
+    "MCP clients must use the new token-bearing connection URL after restart.");
+}
+
 function cmdHelp() {
   console.log("Persistent Linux service: bridge-dev service install|uninstall|status|start|stop|restart|enable|disable|logs|update <sha-or-tag>|rollback");
   console.log(`BridgeDev v${VERSION} — Self-hosted MCP Development Gateway`);
@@ -897,6 +959,12 @@ function cmdHelp() {
   console.log("  status                Show gateway status, mode, sessions, and endpoint");
   console.log("  doctor                Run comprehensive diagnostics on environment health");
   console.log("  access                Display secure connection instructions (interactive only)");
+  console.log("  update [--check]      Install verified latest GitHub main with existing rollback updater");
+  console.log("  token status          Inspect protected token configuration, without values");
+  console.log("  token rotate admin    Rotate Admin token with 0600 backup (--restart optional)");
+  console.log("  token rotate mcp      Rotate MCP token with 0600 backup (--restart optional)");
+  console.log("  monitor               Launch local TUI/scratchpad, or Admin dashboard");
+  console.log("  monitor shortcut      Print custom keybind; optionally install XDG launcher");
   console.log("  workspace <action>    list / add <path> / remove <path> authorized workspaces");
   console.log("  mode <profile>        standard / yolo [--duration <min>] / yolo --off / status");
   console.log("  service <action>      install / uninstall / status / update / rollback / logs");
@@ -953,6 +1021,15 @@ async function main() {
       break;
     case "access":
       cmdAccess();
+      break;
+    case "update":
+      await cmdUpdate(args.slice(1),json);
+      break;
+    case "token":
+      await cmdToken(args.slice(1));
+      break;
+    case "monitor":
+      await monitorCli(args.slice(1));
       break;
     case "workspace":
       cmdWorkspace(args.slice(1), json);
