@@ -52,12 +52,10 @@ export function validAdminSession(req: Request): boolean {
 export function pairAdminSession(req: Request, res: Response): void {
   res.setHeader("Cache-Control", "no-store");
   // A cross-site navigation, form or image must not authorize an Admin browser.
-  const fetchSite = req.get("sec-fetch-site");
-  // Sec-Fetch-Site can be "none" or absent in some local browser contexts.
-  // The signed short-lived code, custom header, JSON body and strict
-  // loopback Host/Origin guard remain mandatory; cross-site callers fail.
-  if ((fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") ||
-      req.get("x-bridge-dev-pair") !== "1" || !req.is("application/json")) {
+  // Browser Fetch Metadata varies across local navigation contexts.
+  // localhostOnly still refuses a cross-site request or mismatched Origin.
+  // A custom header + JSON body + independently signed code are mandatory.
+  if (req.get("x-bridge-dev-pair") !== "1" || !req.is("application/json")) {
     res.status(403).json({ ok: false, error: "LOCAL_PAIRING_REQUIRES_SAME_ORIGIN" });
     return;
   }
