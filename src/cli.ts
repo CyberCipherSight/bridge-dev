@@ -11,6 +11,8 @@ import {offerPersistentBootService} from "./lib/yolo-autostart.js";
 import {serviceCli} from "./lib/service-cli.js";
 import {rotateCredentialFile,inspectCredentialFile,credentialFilePath} from "./lib/token-rotation.js";
 import {monitorCli} from "./lib/monitor-cli.js";
+import {checkLatestMain,formatUpdateHint} from "./lib/release-notice.js";
+import {runtimeVersion} from "./lib/service-config.js";
 import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
 import {extensionCli,operatorApi} from "./lib/extension-cli.js";
@@ -960,6 +962,7 @@ function cmdHelp() {
   console.log("  doctor                Run comprehensive diagnostics on environment health");
   console.log("  access                Display secure connection instructions (interactive only)");
   console.log("  update [--check]      Install verified latest GitHub main with existing rollback updater");
+  console.log("  update notices       Shown during interactive use; cached six hours, never auto-applied");
   console.log("  token status          Inspect protected token configuration, without values");
   console.log("  token rotate admin    Rotate Admin token with 0600 backup (--restart optional)");
   console.log("  token rotate mcp      Rotate MCP token with 0600 backup (--restart optional)");
@@ -998,6 +1001,18 @@ function cmdHelp() {
 async function main() {
   const rawArgs = process.argv.slice(2);
   const { args, json, verbose } = parseCliArguments(rawArgs);
+  // A bounded, cached check happens only during interactive use. No worker,
+  // interval, update, sudo, token disclosure, or machine-readable noise.
+  const interactive = (args[0] || "status").toLowerCase();
+  if (!json && process.stderr.isTTY &&
+      process.env.BRIDGEDEV_UPDATE_NOTICE !== "off" &&
+      ["status","access","help","--help","-h","doctor","workspace",
+       "mode","monitor","mcp","skills","instructions","pack","setup"].includes(interactive)) {
+    try {
+      const hint = formatUpdateHint(await checkLatestMain(runtimeVersion().commit));
+      if (hint) process.stderr.write(hint + "\n");
+    } catch { /* update availability never blocks an operator command */ }
+  }
   if (await serviceCli(args, json)) return;
   if (await extensionCli(args, json, verbose)) return;
   if (await controllerCli(args, json)) return;
