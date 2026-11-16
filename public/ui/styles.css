@@ -380,3 +380,251 @@ dialog h2 {
     flex-basis: 100%;
   }
 }
+
+/* Marketplace & Store Styling */
+.marketplace-container {
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.marketplace-header {
+  margin-bottom: 8px;
+}
+.marketplace-header h2 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+}
+.marketplace-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.marketplace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.market-tab-btn {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.market-tab-btn:hover {
+  border-color: var(--accent);
+}
+.market-tab-btn[data-active="true"] {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.market-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.market-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.marketplace-add-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+.marketplace-add-card h3 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.marketplace-add-card p {
+  margin: 0 0 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.chip-btn {
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.chip-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.marketplace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.market-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.market-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.market-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.market-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(24, 91, 157, 0.1);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.market-card-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.market-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.market-card-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.market-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-skill {
+  background: rgba(139, 196, 155, 0.2);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+}
+.badge-mcp {
+  background: rgba(24, 91, 157, 0.2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.badge-both {
+  background: rgba(223, 193, 123, 0.2);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}
+.market-card-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+.market-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.market-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.market-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.market-status-installed {
+  font-size: 12px;
+  color: var(--ok);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.market-ready-label {
+  font-size: 11px;
+}
+.market-action-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  transition: all 0.15s ease;
+}
+.market-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.market-action-btn.btn-install {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.market-action-btn.btn-install:hover {
+  opacity: 0.9;
+}

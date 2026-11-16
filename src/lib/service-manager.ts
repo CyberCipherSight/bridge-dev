@@ -269,7 +269,8 @@ async function requireStandardServiceMode(c: ServiceConfig): Promise<void> {
       throw error;
     throw Error("SERVICE_UPDATE_REQUIRES_HEALTHY_STANDARD_GATEWAY");
   }
-  if (health.status !== "ok" || health.full_machine_access !== false)
+  const isDangerous = health.full_machine_access === true || health.full_disk_access === true || health.security_mode === "dangerous" || health.security_mode === "yolo";
+  if (health.status !== "ok" || isDangerous)
     throw Error("SERVICE_UPDATE_REQUIRES_STANDARD: active Full System (YOLO) must be independently revoked by the local operator before release acceptance");
 }
 async function healthy(

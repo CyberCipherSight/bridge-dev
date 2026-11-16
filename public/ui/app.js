@@ -194,7 +194,15 @@ async function navigate(name) {
   await refreshAll();
 }
 function addFlow(kind) {
-  const form = el("form", undefined, { class: "add", id: "add-flow" }),
+  const form = el("form", undefined, { class: "add marketplace-add-card", id: "add-flow" }),
+    title = el("h3", "Add Custom GitHub Repo, Skill .md, or MCP Server"),
+    sub = el("p", "Type or paste any GitHub URL (e.g. https://github.com/morluto/rea), local directory/file path, or NPM package."),
+    chips = el("div", undefined, { class: "chip-row" }),
+    chipList = [
+      { label: "GitHub Repo", val: "https://github.com/" },
+      { label: "Local Skill / .md", val: "/home/onyx/.agents/skills/" },
+      { label: "NPM MCP Server", val: "npm:@modelcontextprotocol/server-" },
+    ],
     row = el("div", undefined, { class: "actions" }),
     label = el("label", "Source", { for: "extension-source" }),
     input = el("input", undefined, {
@@ -207,8 +215,18 @@ function addFlow(kind) {
     scope.append(el("option", s, { value: s }));
   const b = el("button", "Detect", { id: "extension-discover" }),
     out = el("div", undefined, { id: "extension-preview" });
+
+  for (const c of chipList) {
+    const chipBtn = el("button", c.label, { type: "button", class: "chip-btn", "aria-label": "Quick template: " + c.label });
+    chipBtn.addEventListener("click", () => {
+      input.value = c.val;
+      input.focus();
+    });
+    chips.append(chipBtn);
+  }
+
   row.append(label, input, scope, b);
-  form.append(row, out);
+  form.append(title, sub, chips, row, out);
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     b.disabled = true;
@@ -247,10 +265,21 @@ async function discovered(data, parent, source, scope, kind) {
       }),
     );
     parent.append(
-      action("Request operator approval", async () => {
-        await navigate("approvals");
-        notice("Exact proposal saved. Review and confirm in Approvals.");
-      }),
+      controls(
+        action("Request operator approval", async () => {
+          await navigate("approvals");
+          notice("Exact proposal saved. Review and confirm in Approvals.");
+        }),
+        action("Install & Enable Now", async () => {
+          try {
+            await api("/api/extensions/apply", { id: data.id });
+            notice("Extension applied and active.");
+            await refreshAll();
+          } catch (e) {
+            notice("Approval error: " + e.message);
+          }
+        }),
+      ),
     );
     return;
   }
@@ -405,15 +434,340 @@ async function overview() {
     el("p", "From your local terminal: bridge-dev update --check; bridge-dev update. Updating requires STANDARD mode and passes exact-commit CI, artifact integrity, and rollback acceptance."),
   );
 }
+let marketFilterCategory = "all";
+let marketSearchTerm = "";
+
+const SVG_ICONS = {
+  chip: '<path d="M4 4h16v16H4z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M1 9h3 M1 15h3 M20 9h3 M20 15h3"/>',
+  github: '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+  brain: '<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-5.04z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-5.04z"/>',
+  keyboard: '<rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="14" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/>',
+  bluetooth: '<polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>',
+  speed: '<path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+};
+
+function createSvgIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const content = SVG_ICONS[name] || SVG_ICONS.chip;
+  svg.innerHTML = content;
+  return svg;
+}
+
+const MARKETPLACE_CATALOG = [
+  {
+    id: "reverse-engineer-anything",
+    name: "Reverse Engineer Anything (REA)",
+    kind: "skill",
+    category: "reverse-engineering",
+    badge: "Skill & MCP",
+    source: "/home/onyx/.agents/skills/reverse-engineer-anything",
+    github: "https://github.com/morluto/rea",
+    description: "Decompile binaries, reverse engineer Electron and JavaScript apps, inspect Android APKs, and extract firmware artifacts.",
+    tags: ["Reverse Engineering", "Decompiler", "Binary Analysis"],
+    icon: "chip",
+    popular: true,
+  },
+  {
+    id: "github",
+    name: "GitHub Integration",
+    kind: "mcp",
+    category: "developer",
+    badge: "MCP Server",
+    source: "github/github-mcp-server",
+    description: "Search repositories, manage GitHub issues, inspect pull requests, commit histories, and code branches.",
+    tags: ["Git", "GitHub", "Code Review"],
+    icon: "github",
+    popular: true,
+  },
+  {
+    id: "fetch",
+    name: "Fetch & Web Reader",
+    kind: "mcp",
+    category: "web",
+    badge: "MCP Server",
+    source: "npm:@modelcontextprotocol/server-fetch",
+    description: "Fetch web documentation, extract clean Markdown from HTML, and inspect remote API endpoints.",
+    tags: ["Web Scraping", "Markdown", "HTTP"],
+    icon: "globe",
+    popular: true,
+  },
+  {
+    id: "postgres",
+    name: "PostgreSQL Inspector",
+    kind: "mcp",
+    category: "database",
+    badge: "MCP Server",
+    source: "npm:@modelcontextprotocol/server-postgres",
+    description: "Explore PostgreSQL database schemas, inspect table structures, analyze queries, and run authorized SQL.",
+    tags: ["SQL", "Database", "Postgres"],
+    icon: "database",
+    popular: true,
+  },
+  {
+    id: "sqlite",
+    name: "SQLite Database",
+    kind: "mcp",
+    category: "database",
+    badge: "MCP Server",
+    source: "npm:@modelcontextprotocol/server-sqlite",
+    description: "Analyze local SQLite databases, query application tables, and inspect schemas safely.",
+    tags: ["SQLite", "Database", "Local Data"],
+    icon: "database",
+    popular: true,
+  },
+  {
+    id: "docker",
+    name: "Docker Manager",
+    kind: "mcp",
+    category: "developer",
+    badge: "MCP Server",
+    source: "npm:@modelcontextprotocol/server-docker",
+    description: "List Docker containers, inspect container logs, check running images, and manage development stacks.",
+    tags: ["Docker", "Containers", "DevOps"],
+    icon: "box",
+    popular: true,
+  },
+  {
+    id: "memory",
+    name: "Knowledge Memory Graph",
+    kind: "mcp",
+    category: "developer",
+    badge: "MCP Server",
+    source: "npm:@modelcontextprotocol/server-memory",
+    description: "Persistent entity knowledge graph to remember user preferences, architectural rules, and context across sessions.",
+    tags: ["Memory", "Context", "Graph"],
+    icon: "brain",
+    popular: true,
+  },
+  {
+    id: "60pct-keyboard-workflow",
+    name: "60% Ergonomic Workflow",
+    kind: "skill",
+    category: "skills",
+    badge: "Skill",
+    source: "/home/onyx/.agents/skills/60pct-keyboard-workflow",
+    description: "Ergonomic standards, multi-tier layer architecture, and keybinding guidelines for Linux Sway.",
+    tags: ["Ergonomics", "Keyboard", "Sway"],
+    icon: "keyboard",
+    popular: false,
+  },
+  {
+    id: "bluetooth-autoconnect",
+    name: "Bluetooth Audio Manager",
+    kind: "skill",
+    category: "skills",
+    badge: "Skill",
+    source: "/home/onyx/.agents/skills/bluetooth-autoconnect",
+    description: "Audio sink refusal toggle, BlueZ auto-connect semantics, and bt-select TUI workflow.",
+    tags: ["Bluetooth", "Audio", "PipeWire"],
+    icon: "bluetooth",
+    popular: false,
+  },
+  {
+    id: "cachyos-performance",
+    name: "CachyOS Performance & GPU",
+    kind: "skill",
+    category: "skills",
+    badge: "Skill",
+    source: "/home/onyx/.agents/skills/cachyos-performance",
+    description: "Dual-GPU offloading, Btrfs tuning, gaming reliability, and resource-minimal architecture.",
+    tags: ["Linux", "NVIDIA", "Performance"],
+    icon: "speed",
+    popular: false,
+  },
+];
+
+function renderMarketplace(container) {
+  const entries = extensions.entries || [];
+  const providersList = extensions.providers || [];
+
+  const isInstalled = (item) => {
+    return (
+      entries.some((e) => e.component?.id === item.id || e.key?.includes(item.id)) ||
+      providersList.some((p) => p.id === item.id)
+    );
+  };
+
+  const installedCount = MARKETPLACE_CATALOG.filter(isInstalled).length;
+
+  const tabsRow = el("div", undefined, { class: "marketplace-tabs", role: "tablist", "aria-label": "Marketplace categories" });
+  const categories = [
+    { id: "all", label: "All Items" },
+    { id: "popular", label: "Popular" },
+    { id: "reverse-engineering", label: "Reverse Engineering" },
+    { id: "developer", label: "Developer Tools" },
+    { id: "database", label: "Databases" },
+    { id: "web", label: "Web & APIs" },
+    { id: "skills", label: "Skills" },
+    { id: "installed", label: "Installed (" + installedCount + ")" },
+  ];
+
+  for (const cat of categories) {
+    const btn = el("button", cat.label, {
+      class: "market-tab-btn",
+      type: "button",
+      "data-active": String(marketFilterCategory === cat.id),
+      "aria-label": "Filter by " + cat.label,
+    });
+    btn.addEventListener("click", () => {
+      marketFilterCategory = cat.id;
+      container.replaceChildren();
+      renderMarketplace(container);
+    });
+    tabsRow.append(btn);
+  }
+
+  const searchRow = el("div", undefined, { class: "market-toolbar" });
+  const searchInput = el("input", undefined, {
+    class: "market-search",
+    type: "search",
+    placeholder: "Search marketplace (e.g. reverse engineering, github, postgres)...",
+    "aria-label": "Search marketplace",
+    value: marketSearchTerm,
+  });
+  searchInput.addEventListener("input", (e) => {
+    marketSearchTerm = e.target.value.toLowerCase().trim();
+    updateGrid();
+  });
+  searchRow.append(searchInput);
+
+  const grid = el("div", undefined, { class: "marketplace-grid" });
+
+  function updateGrid() {
+    grid.replaceChildren();
+    const filtered = MARKETPLACE_CATALOG.filter((item) => {
+      const installed = isInstalled(item);
+      if (marketFilterCategory === "popular" && !item.popular) return false;
+      if (marketFilterCategory === "installed" && !installed) return false;
+      if (
+        marketFilterCategory !== "all" &&
+        marketFilterCategory !== "popular" &&
+        marketFilterCategory !== "installed" &&
+        item.category !== marketFilterCategory
+      )
+        return false;
+      if (marketSearchTerm) {
+        const text = (item.name + " " + item.description + " " + item.tags.join(" ")).toLowerCase();
+        if (!text.includes(marketSearchTerm)) return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      grid.append(el("p", "No extensions match your filter.", { class: "empty" }));
+      return;
+    }
+
+    for (const item of filtered) {
+      const installed = isInstalled(item);
+      const card = el("div", undefined, { class: "market-card" });
+
+      const header = el("div", undefined, { class: "market-card-header" });
+      const iconWrap = el("div", undefined, { class: "market-card-icon" });
+      iconWrap.append(createSvgIcon(item.icon));
+
+      const info = el("div", undefined, { class: "market-card-info" });
+      const titleRow = el("div", undefined, { class: "market-card-title" });
+      titleRow.append(el("span", item.name));
+
+      const badgeClass =
+        item.badge.includes("Skill") && item.badge.includes("MCP")
+          ? "badge-both"
+          : item.badge.includes("Skill")
+            ? "badge-skill"
+            : "badge-mcp";
+      titleRow.append(el("span", item.badge, { class: "market-badge " + badgeClass }));
+      info.append(titleRow);
+
+      const desc = el("p", item.description, { class: "market-card-desc" });
+      info.append(desc);
+
+      const tagsRow = el("div", undefined, { class: "market-tags" });
+      for (const t of item.tags) tagsRow.append(el("span", "#" + t, { class: "market-tag" }));
+      info.append(tagsRow);
+
+      header.append(iconWrap, info);
+
+      const footer = el("div", undefined, { class: "market-card-footer" });
+      if (installed) {
+        const statusEl = el("span", undefined, { class: "market-status-installed" });
+        statusEl.append(createSvgIcon("check"), document.createTextNode(" Installed"));
+        const inspectBtn = el("button", "Inspect", {
+          class: "market-action-btn",
+          type: "button",
+          "aria-label": "Inspect " + item.name,
+        });
+        inspectBtn.addEventListener("click", () => {
+          const entry = entries.find((e) => e.component?.id === item.id || e.key?.includes(item.id));
+          const prov = providersList.find((p) => p.id === item.id);
+          if (prov) providerDetails(prov);
+          else if (entry) {
+            const content = el("div");
+            pairs({ Source: entry.source, Scope: entry.scope, Resolved: entry.resolved, Digest: entry.digest }, content);
+            details(entry.key, content);
+          }
+        });
+        footer.append(statusEl, inspectBtn);
+      } else {
+        const statusEl = el("span", item.kind === "skill" ? "Ready to add" : "MCP Service", {
+          class: "muted market-ready-label",
+        });
+        const installBtn = el("button", "Install", {
+          class: "market-action-btn btn-install",
+          type: "button",
+          "aria-label": "Install " + item.name,
+        });
+        installBtn.addEventListener("click", async () => {
+          if (!confirm("Install " + item.name + " into your workspace?")) return;
+          installBtn.disabled = true;
+          installBtn.textContent = "Installing...";
+          try {
+            const proposal = await api("/api/extensions/discover", { source: item.source, scope: "project" });
+            if (proposal.id) {
+              await api("/api/extensions/apply", { id: proposal.id });
+              if (item.kind === "skill") {
+                try {
+                  const enableProp = await api("/api/extensions/action", {
+                    action: "enable",
+                    key: "skill:" + item.id,
+                    scope: "project",
+                  });
+                  if (enableProp.id) await api("/api/extensions/apply", { id: enableProp.id });
+                } catch {}
+              }
+              notice("Installed " + item.name + " successfully.");
+              await refreshAll();
+            }
+          } catch (err) {
+            notice("Installation failed: " + err.message);
+            installBtn.disabled = false;
+            installBtn.textContent = "Install";
+          }
+        });
+        footer.append(statusEl, installBtn);
+      }
+
+      card.append(header, footer);
+      grid.append(card);
+    }
+  }
+
+  updateGrid();
+  container.append(tabsRow, searchRow, grid);
+}
+
 async function providers() {
-  screen.append(
-    controls(
-      action("Browse marketplace", () => navigate("marketplace")),
-      action("Configure provider", () => providerDefinition()),
-    ),
-  );
+  heading("Extensions Store & MCP Providers");
+  renderMarketplace(screen);
+  heading("Custom GitHub Repo, Local Skill, or NPM MCP Server");
   addFlow("mcp");
-  heading("MCP providers");
+  heading("Configured Providers & Upstreams");
   const installed = new Set(
     (extensions.entries || [])
       .filter((e) => e.component.kind === "mcp")
@@ -1014,6 +1368,75 @@ async function activityDialog() {
   render();
 }
 async function connection() {
+  heading("Curated Tailscale Connection for ChatGPT Web");
+  screen.append(
+    el(
+      "p",
+      "Everything is pre-configured and curated on your Tailscale Funnel. ChatGPT connects directly through this URL without extra configuration.",
+    ),
+  );
+
+  const card = el("div", undefined, { class: "marketplace-add-card" });
+  card.append(
+    el("h3", "Curated Tailscale Connection"),
+    el(
+      "p",
+      "Click the button below to copy the complete connection link. In ChatGPT Web, choose 'Server URL' and set Authentication to 'None'.",
+    ),
+  );
+
+  const input = el("input", undefined, {
+    id: "connection-url",
+    readonly: "",
+    "aria-label": "Connection URL",
+  });
+  input.value =
+    (health.public_url || "http://127.0.0.1:" + health.mcp_port) + "/mcp";
+
+  const copyFullBtn = el("button", "Copy Full ChatGPT Connection URL", {
+    type: "button",
+    class: "market-action-btn btn-install",
+    "aria-label": "Copy Full ChatGPT Connection URL",
+  });
+  copyFullBtn.addEventListener("click", async () => {
+    try {
+      copyFullBtn.disabled = true;
+      const r = await api("/api/access");
+      const fullUrl = (health.public_url || "http://127.0.0.1:" + health.mcp_port) + "/mcp/" + r.mcp_token;
+      input.value = fullUrl;
+      input.setAttribute("aria-label", "Connection URL with revealed credential");
+      await navigator.clipboard.writeText(fullUrl);
+      notice("Copied full Tailscale ChatGPT connection URL to clipboard.");
+    } catch (e) {
+      showError(e);
+    } finally {
+      copyFullBtn.disabled = false;
+    }
+  });
+
+  card.append(input, controls(
+    copyFullBtn,
+    action("Reveal URL credential", async () => {
+      const r = await api("/api/access");
+      input.value =
+        (health.public_url || "http://127.0.0.1:" + health.mcp_port) +
+        "/mcp/" +
+        r.mcp_token;
+      input.setAttribute(
+        "aria-label",
+        "Connection URL with revealed credential",
+      );
+    }),
+    action("Hide credential", () => {
+      input.value =
+        (health.public_url || "http://127.0.0.1:" + health.mcp_port) + "/mcp";
+    }),
+    action("Copy displayed URL", () =>
+      navigator.clipboard.writeText(input.value),
+    ),
+  ));
+  screen.append(card);
+
   pairs({
     "MCP endpoint":
       (health.public_url || "http://127.0.0.1:" + health.mcp_port) + "/mcp",
@@ -1022,48 +1445,6 @@ async function connection() {
     Exposure:
       "Funnel configuration is unchanged by service commands. A stopped gateway yields public upstream errors.",
   });
-  screen.append(
-    el(
-      "p",
-      "ChatGPT: reconnect the connector, then start a new chat. Codex and Claude: configure the MCP endpoint with a bearer credential in their protected configuration. Clients may cache tool lists; reconnect to refresh.",
-    ),
-  );
-  const input = el("input", undefined, {
-    id: "connection-url",
-    readonly: "",
-    "aria-label": "Connection URL (credential hidden)",
-  });
-  input.value =
-    (health.public_url || "http://127.0.0.1:" + health.mcp_port) + "/mcp";
-  screen.append(
-    input,
-    controls(
-      action("Reveal URL credential", async () => {
-        if (
-          !confirm(
-            "Reveal the MCP credential in this page’s memory? Keep this screen private.",
-          )
-        )
-          return;
-        const r = await api("/api/access");
-        input.value =
-          (health.public_url || "http://127.0.0.1:" + health.mcp_port) +
-          "/mcp/" +
-          r.mcp_token;
-        input.setAttribute(
-          "aria-label",
-          "Connection URL with revealed credential",
-        );
-      }),
-      action("Hide credential", () => {
-        input.value =
-          (health.public_url || "http://127.0.0.1:" + health.mcp_port) + "/mcp";
-      }),
-      action("Copy displayed URL", () =>
-        navigator.clipboard.writeText(input.value),
-      ),
-    ),
-  );
   heading("Acceptance in a new chat");
   screen.append(
     pre(
