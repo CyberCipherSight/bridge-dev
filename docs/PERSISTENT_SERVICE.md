@@ -48,6 +48,21 @@ No reboot is performed by installation. Verify manually after reboot: check
 `loginctl show-user "$USER" -p Linger`, `bridge-dev doctor` and the authenticated
 MCP acceptance calls below. Check that ports 3000 and 3001 belong to one PID.
 
+## On-demand update notifications (no new service)
+
+For interactive, non-JSON CLI commands only, BridgeDev makes a bounded GitHub
+main commit check when its local cache is missing or six hours old. It reads
+the immutable installed release marker and displays a suggestion to run
+`bridge-dev update` when the commits differ. Failure to reach GitHub is
+nonfatal. `BRIDGEDEV_UPDATE_NOTICE=off` disables these hints. There is **no**
+watcher, timer, service, auto-update or background polling. Automatic
+instant-on-push notification would require an always-on check/push receiver;
+this design intentionally defers detection to the next eligible CLI use.
+
+The localhost Admin Overview offers an authenticated **manual** GitHub main
+check; it reports both hashes without mutating anything. A newer main commit
+still has to pass exact-SHA CI and guarded update acceptance.
+
 ## One-command verified updates
 
 `bridge-dev update --check` retrieves the current GitHub `main` SHA
