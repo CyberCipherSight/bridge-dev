@@ -6,6 +6,9 @@ import {spawnSync} from 'node:child_process';
 import {generateKeyPairSync,sign,verify,randomUUID,createHash} from 'node:crypto';
 import {operatorConfirmedYes} from './lease-activation.mjs';
 if(!process.env.BRIDGEDEV_TEST_ROOT)throw Error('Use isolated-tests.mjs');
+// The root operator's key, not the unprivileged portable policy file, anchors
+// the protected activation record. Otherwise CLI and MCP mode disagree.
+assert.match(await fs.readFile('src/lib/policy-gateway.ts','utf8'), /const authorityFile = pubKeyPath;/);
 for(const [answer,expected] of [['y',true],['Y',true],[' y ',true],['',true],['  ',true],['n',false],['N',false],['no',false],['yes',false],['ENABLE YOLO',false],[null,false],[undefined,false]])
  assert.equal(operatorConfirmedYes(answer),expected,'Unexpected root confirmation acceptance: '+JSON.stringify(answer));
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'bridge-controller-'));
