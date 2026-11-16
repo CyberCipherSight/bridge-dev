@@ -14,6 +14,7 @@ import {extensionCli,operatorApi} from "./lib/extension-cli.js";
 import {controllerCli} from "./lib/controller-cli.js";
 import {parseCliArguments} from "./lib/cli-arguments.js";
 import {hostControllerAvailable} from "./lib/host-controller.js";
+import {mintAdminPairCode} from "./admin/local-session.js";
 import {tailscaleEndpoint,enableTailscaleFunnel} from "./lib/tailscale.js";
 import { execSync, spawnSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -414,13 +415,16 @@ function cmdAccess(): void {
   console.log(`  ${connectionUrl}\n`);
   console.log("Dashboard URL (local operations interface):");
   console.log(`  ${dashboardUrl}\n`);
+  console.log("One-click local Admin pairing (valid 60 seconds; private terminal only):");
+  console.log(`  ${dashboardUrl}#pair=${mintAdminPairCode(admin)}\n`);
   console.log("ChatGPT Web Setup Steps (Add custom MCP server):");
   console.log("  1. Name          : BridgeDev");
   console.log("  2. Connection    : Select 'Server URL' and paste the Connection URL above");
   console.log("  3. Authentication: Select 'None' (Authentication token is embedded in the URL)");
   console.log("  4. Save          : Click Add / Save to begin using native workstation tools\n");
   console.log("Dashboard Authentication:");
-  console.log("  Enter your Admin Token in memory at http://127.0.0.1:3001/ui/ to manage servers.");
+  console.log("  Open the 60-second pairing link once. A signed HttpOnly session persists across page reloads and service restarts.");
+  console.log("  Keep pairing links private; Admin token rotation invalidates existing browser sessions.");
 }
 
 function runOperator(args: string[]): boolean {
