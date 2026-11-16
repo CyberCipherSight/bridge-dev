@@ -449,7 +449,7 @@ try {
     adminUrl: `http://127.0.0.1:${adminPort}`,
     adminToken: admin,
   });
-  assert.ok(smoke.ok && smoke.sections.length === 11);
+  assert.ok(smoke.ok && smoke.sections.length === 12);
   console.log(
     "Admin browser PASS: eleven sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
   );
