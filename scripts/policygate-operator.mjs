@@ -192,7 +192,7 @@ if (action === "yolo") {
     let ackVerified = false;
     try {
       const user = process.env.SUDO_USER || process.env.USER || "onyx";
-      const home = process.env.HOME || ("/home/" + user);
+      const home = process.env.SUDO_USER ? path.join("/home", process.env.SUDO_USER) : (process.env.HOME || ("/home/" + user));
       const envFile = path.join(home, ".config", "bridge-dev", ".env");
       let adminToken = "";
       if (fs.existsSync(envFile)) {
