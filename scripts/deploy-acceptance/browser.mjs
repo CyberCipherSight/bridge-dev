@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
+import { mintAdminPairCode } from "../../dist/admin/local-session.js";
 export async function acceptAdminBrowser({
   binary,
   adminUrl,
@@ -136,20 +137,24 @@ export async function acceptAdminBrowser({
     await command("Runtime.enable");
     await command("Network.enable");
     await command("Page.enable");
-    await command("Page.navigate", { url: origin + "/ui/" });
+    // Use the same one-use local-operator pairing flow as a normal browser.
+    // Opening /ui/ unauthenticated first would correctly produce HTTP 401,
+    // which is a false failure in the console-error acceptance assertion.
+    const pairing = mintAdminPairCode(adminToken);
+    await command("Page.navigate", { url: origin + "/ui/#pair=" + pairing });
     await until(() =>
       evaluate(
-        'document.readyState==="complete"&&typeof refreshAll==="function"',
+        'document.readyState==="complete" && document.getElementById("screen")?.textContent.includes("Gateway")',
       ),
-    );
-    await evaluate(
-      'document.getElementById("admin-credential").value=' +
-        JSON.stringify(adminToken) +
-        ";refreshAll()",
     );
     assert.equal(
       await evaluate('document.getElementById("notice").className'),
       "",
+    );
+    assert.equal(
+      await evaluate('document.getElementById("admin-credential").value'),
+      "",
+      "Successful pairing must not expose the Admin bearer token in JS",
     );
     const sections = [
       "overview",
