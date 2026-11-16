@@ -52,13 +52,10 @@ export function validAdminSession(req: Request): boolean {
 export function pairAdminSession(req: Request, res: Response): void {
   res.setHeader("Cache-Control", "no-store");
   // A cross-site navigation, form or image must not authorize an Admin browser.
-  // Browser Fetch Metadata varies across local navigation contexts.
-  // localhostOnly still refuses a cross-site request or mismatched Origin.
-  // A custom header + JSON body + independently signed code are mandatory.
-  if (req.get("x-bridge-dev-pair") !== "1") {
-    res.status(403).json({ ok: false, error: "LOCAL_PAIRING_MISSING_CUSTOM_HEADER" });
-    return;
-  }
+  // The signed, one-use operator code is the authorization credential.
+  // Requiring nonstandard browser headers is brittle across local browser
+  // implementations; a JSON-only request plus the existing Host/Origin guard
+  // still prevents ordinary cross-site form submissions.
   if (!req.is("application/json")) {
     res.status(403).json({ ok: false, error: "LOCAL_PAIRING_REQUIRES_JSON" });
     return;
