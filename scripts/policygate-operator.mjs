@@ -186,7 +186,41 @@ if (action === "yolo") {
   console.log(permanent?"Full System lease issued until manually disabled.":"Full System lease issued for "+durationMin+" minutes.");
   if(!permanent)console.log(`Lease expires: ${new Date(expires_at).toISOString()}`);
   console.log(controllerPresent?"Host-controller activation record VERIFIED.":"Isolated test operator: no host controller activation.");
-  console.log("Running MCP gateway acknowledgment is UNVERIFIED; check bridge-dev mode status and MCP agent_status.");
+  if (process.env.POLICYGATE_TEST_OPERATOR === "1") {
+    console.log("Running MCP gateway acknowledgment is UNVERIFIED; check bridge-dev mode status and MCP agent_status.");
+  } else {
+    let ackVerified = false;
+    try {
+      const user = process.env.SUDO_USER || process.env.USER || "onyx";
+      const home = process.env.HOME || ("/home/" + user);
+      const envFile = path.join(home, ".config", "bridge-dev", ".env");
+      let adminToken = "";
+      if (fs.existsSync(envFile)) {
+        const lines = fs.readFileSync(envFile, "utf8").split("\n");
+        for (const line of lines) {
+          const m = line.match(/^ADMIN_TOKEN=(.*)$/);
+          if (m) adminToken = m[1].trim().replace(/^['"]|['"]$/g, "");
+        }
+      }
+      const adminPort = (process.env.ADMIN_PORT || "3001").trim().replace(/^['"]|['"]$/g, "");
+      const probe = spawnSync("curl", [
+        "-s", "-m", "2",
+        "-H", "Authorization: Bearer " + adminToken,
+        "http://127.0.0.1:" + adminPort + "/health"
+      ], { encoding: "utf8", timeout: 3000 });
+      if (probe.status === 0 && probe.stdout) {
+        const data = JSON.parse(probe.stdout);
+        if (data.status === "ok" && data.policy_mode === "dangerous" && data.full_machine_access === true) {
+          ackVerified = true;
+        }
+      }
+    } catch {}
+    if (ackVerified) {
+      console.log("Running MCP gateway acknowledgment is VERIFIED (security_mode: dangerous, full_machine_access: true).");
+    } else {
+      console.log("Running MCP gateway acknowledgment is UNVERIFIED; check bridge-dev mode status and MCP agent_status.");
+    }
+  }
   console.log("To deactivate immediately, run: bridge-dev mode sudo --off");
   process.exit(0);
 }

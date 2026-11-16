@@ -479,9 +479,10 @@ async function offerBootAutostartAfterLocalYolo(): Promise<void> {
         const prompt = createInterface({input:process.stdin,output:process.stdout});
         try {
           const answer = await prompt.question(
-            "Also enable BridgeDev at boot (user systemd unit + linger)? [y/N] "
+            "Enable persistent BridgeDev systemd service at boot? [Y/n] "
           );
-          return /^(y|yes)$/i.test(answer.trim());
+          const t = answer.trim();
+          return t === "" || /^(y|yes)$/i.test(t);
         } finally {
           prompt.close();
         }

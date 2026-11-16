@@ -20,7 +20,7 @@ export async function monitorCli(args:string[]):Promise<void> {
     const tokenLine=raw.split(/\r?\n/).filter(x=>x.startsWith("ADMIN_TOKEN="));
     const token=tokenLine.length===1 ? tokenLine[0].slice(12).replace(/^['"]|['"]$/g,"") : "";
     const portLine=raw.split(/\r?\n/).find(x=>x.startsWith("ADMIN_PORT="));
-    const rawPort=(portLine?.slice(11)||process.env.ADMIN_PORT||"3001").trim();
+    const rawPort=(portLine?.slice(11)||process.env.ADMIN_PORT||"3001").trim().replace(/^['"]|['"]$/g, "");
     if(!/^\d{1,5}$/.test(rawPort)||Number(rawPort)>65535||Number(rawPort)<1)
       throw Error("MONITOR_INVALID_ADMIN_PORT");
     if(!token)throw Error("MONITOR_ADMIN_TOKEN_NOT_CONFIGURED");
@@ -82,7 +82,7 @@ export async function monitorCli(args:string[]):Promise<void> {
     if(r.error||r.status!==0)throw Error("MONITOR_TUI_FAILED");
     return;
   }
-  const raw=process.env.ADMIN_PORT||"3001",port=Number(raw);
+  const raw=(process.env.ADMIN_PORT||"3001").trim().replace(/^['"]|['"]$/g, ""),port=Number(raw);
   if(!/^\d{1,5}$/.test(raw)||port<1||port>65535)throw Error("MONITOR_ADMIN_PORT_INVALID");
   const url="http://127.0.0.1:"+port+"/ui/";
   const cmd=process.platform==="darwin"?"open":process.platform==="win32"?"cmd":"xdg-open";
