@@ -394,11 +394,37 @@ try {
   assert.deepEqual(errors, []);
   assert.ok(!requests.some((u) => u.endsWith("/api/access")));
   await evaluate('document.getElementById("disconnect").click()');
-  assert.equal(
-    await evaluate('document.getElementById("admin-credential").value'),
-    "",
+  await waitFor(() =>
+    evaluate('document.getElementById("admin-credential").value === ""'),
   );
   assert.equal(await evaluate("localStorage.length+sessionStorage.length"), 0);
+
+  // A paired browser has no long-lived bearer token in JS/storage and can
+  // reload without manually logging in again. Pairing is signed, single-use.
+  const { mintAdminPairCode } = await import("../dist/admin/local-session.js");
+  const pair = mintAdminPairCode(admin);
+  await command("Page.navigate", {
+    url: `http://127.0.0.1:${adminPort}/ui/#pair=${pair}`,
+  });
+  await waitFor(() =>
+    evaluate('document.getElementById("screen").textContent.includes("Gateway")'),
+  );
+  assert.equal(await evaluate('document.getElementById("admin-credential").value'), "");
+  assert.equal(await evaluate("localStorage.length+sessionStorage.length"), 0);
+  assert.equal(await evaluate('document.getElementById("security-panel").hidden'), true);
+  await command("Page.reload");
+  await waitFor(() =>
+    evaluate('document.getElementById("screen").textContent.includes("Gateway")'),
+  );
+  assert.equal(await evaluate('document.getElementById("admin-credential").value'), "");
+  await evaluate('navigate("security")');
+  assert.equal(await evaluate('document.getElementById("security-panel").hidden'), false);
+  const replay = await fetch(`http://127.0.0.1:${adminPort}/api/auth/pair`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-BridgeDev-Pair": "1" },
+    body: JSON.stringify({ code: pair }),
+  });
+  assert.equal(replay.status, 403, "Non-browser pairing/replay must be refused");
   ws.close();
   ws = undefined;
   const oldBrowserExit = new Promise((resolve) =>
@@ -416,9 +442,9 @@ try {
     adminUrl: `http://127.0.0.1:${adminPort}`,
     adminToken: admin,
   });
-  assert.ok(smoke.ok && smoke.sections.length === 10);
+  assert.ok(smoke.ok && smoke.sections.length === 11);
   console.log(
-    "Admin browser PASS: ten sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
+    "Admin browser PASS: eleven sections, desktop/phone, real add/approval, hostile metadata/content/audit, no external requests or console errors, memory-only credentials/theme, keyboard and accessible control names",
   );
 } finally {
   ws?.close();
