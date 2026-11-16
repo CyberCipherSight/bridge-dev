@@ -406,9 +406,16 @@ try {
   await command("Page.navigate", {
     url: `http://127.0.0.1:${adminPort}/ui/#pair=${pair}`,
   });
-  await waitFor(() =>
-    evaluate('document.getElementById("screen").textContent.includes("Gateway")'),
-  );
+  try {
+    await waitFor(() =>
+      evaluate('document.getElementById("screen").textContent.includes("Gateway")'),
+    );
+  } catch (error) {
+    const diagnostic = await evaluate(
+      'JSON.stringify({notice:document.getElementById("notice")?.textContent,ready:adminSessionReady,section:section,screen:document.getElementById("screen")?.textContent.slice(0,180),path:location.pathname,requests:performance.getEntriesByType("resource").map(x=>new URL(x.name).pathname).filter(x=>x.includes("/api/auth/")).slice(-4)})',
+    ).catch(() => "diagnostic unavailable");
+    throw Error("Admin pairing acceptance failed: " + diagnostic);
+  }
   assert.equal(await evaluate('document.getElementById("admin-credential").value'), "");
   assert.equal(await evaluate("localStorage.length+sessionStorage.length"), 0);
   assert.equal(await evaluate('document.getElementById("security-panel").hidden'), true);
