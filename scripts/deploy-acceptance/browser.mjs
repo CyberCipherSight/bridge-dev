@@ -163,6 +163,7 @@ export async function acceptAdminBrowser({
       "settings",
     ];
     if(await evaluate(`Boolean(document.querySelector('nav button[data-tab="marketplace"]'))`))sections.splice(1,0,"marketplace");
+    if (await evaluate('Boolean(document.querySelector(\'nav button[data-tab="security"]\'))')) sections.push("security");
     if (evidence) await fs.mkdir(evidence, { recursive: true, mode: 0o700 });
     for (const width of [1280, 390]) {
       await command("Emulation.setDeviceMetricsOverride", {
