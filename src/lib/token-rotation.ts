@@ -10,6 +10,7 @@ export function credentialFilePath(): string {
   return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "bridge-dev", ".env");
 }
 async function requireSafeFile(filename: string): Promise<void> {
+  if (process.platform === "win32") throw Error("TOKEN_ROTATION_POSIX_ONLY: Windows ACL rotation not implemented");
   const st = await fsp.lstat(filename);
   if (!st.isFile() || st.nlink !== 1 || (process.getuid && st.uid !== process.getuid()) || (st.mode & 0o777) !== 0o600)
     throw Error("TOKEN_FILE_UNSAFE: expected regular, single-link user-owned .env mode 0600");
