@@ -38,6 +38,10 @@ reports the exact operator command if missing:
 sudo loginctl enable-linger "$USER"
 ```
 
+### Opt-in autostart during local YOLO activation
+
+After the root operator accepts `bridge-dev mode yolo`, the CLI verifies the signed lease and offers **another, default-No** interactive confirmation for boot persistence. `y` reuses `bridge-dev service install` when no owned service is installed, otherwise `systemctl --user enable` to create the managed `default.target.wants` symlink; if `loginctl` shows no linger, it requests `sudo loginctl enable-linger <uid>`. It checks installation, enablement, and linger again before reporting success. `n`, missing TTY, failed YOLO activation, or already-complete boot setup never make additional system changes. All operations run as the local operator, with no service restart, extra daemon, credential change, Funnel change, or YOLO lease renewal. A newly installed standard-sandbox unit may still block sudo escalation: that requires independent controller-compatible service review, never automatic sandbox weakening. If an operation fails, the CLI reports partial boot setup without pretending to revoke the signed YOLO lease.
+
 No reboot is performed by installation. Verify manually after reboot: check
 `systemctl --user is-enabled bridge-dev.service`,
 `systemctl --user status bridge-dev.service --no-pager`,

@@ -6,7 +6,8 @@ import {readPortableMode} from "./lib/portable-mode.js";
  */
 
 import "dotenv/config";
-import {startConfiguredService} from "./lib/service-manager.js";
+import {startConfiguredService,installService,controlService} from "./lib/service-manager.js";
+import {offerPersistentBootService} from "./lib/yolo-autostart.js";
 import {serviceCli} from "./lib/service-cli.js";
 import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
@@ -17,6 +18,7 @@ import {hostControllerAvailable} from "./lib/host-controller.js";
 import {mintAdminPairCode} from "./admin/local-session.js";
 import {tailscaleEndpoint,enableTailscaleFunnel} from "./lib/tailscale.js";
 import { execSync, spawnSync, execFileSync } from "node:child_process";
+import {createInterface} from "node:readline/promises";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -451,6 +453,50 @@ function runOperator(args: string[]): boolean {
   return true;
 }
 
+/**
+ * Runs only AFTER the independent, TTY-only root operator confirms YOLO.
+ * Nothing is installed or privileged merely because the first prompt was accepted.
+ */
+async function offerBootAutostartAfterLocalYolo(): Promise<void> {
+  if (process.platform !== "linux" || !process.stdin.isTTY || !process.stdout.isTTY) return;
+  try {
+    await offerPersistentBootService({
+      status: async () => userServiceStatus(),
+      confirm: async () => {
+        const prompt = createInterface({input:process.stdin,output:process.stdout});
+        try {
+          const answer = await prompt.question(
+            "Also enable BridgeDev at boot (user systemd unit + linger)? [y/N] "
+          );
+          return /^(y|yes)$/i.test(answer.trim());
+        } finally {
+          prompt.close();
+        }
+      },
+      install: async () => {
+        // Never start/restart a possibly running gateway or alter its credentials.
+        await installService({enable:true,start:false});
+        console.log("Installed the BridgeDev user service using the existing verified release.");
+        console.log("A fresh user unit uses the standard sandbox; host-root commands need a separately reviewed controller-compatible unit.");
+      },
+      enable: async () => { await controlService("enable"); },
+      enableLinger: async () => {
+        const uid=process.getuid?.();
+        if (!Number.isInteger(uid) || uid === 0)
+          throw Error("YOLO_BOOT_LINGER_REQUIRES_REAL_USER");
+        const result=spawnSync("/usr/bin/sudo",["--","/usr/bin/loginctl","enable-linger",String(uid)],{stdio:"inherit"});
+        if (result.error || result.status!==0)
+          throw Error("YOLO_BOOT_LINGER_FAILED: verify sudo loginctl enable-linger for the local operator");
+      },
+      log: (message) => console.log(message),
+    });
+  } catch (error) {
+    // Do not revoke or falsely report the separately authorized signed lease.
+    console.error("Full System remains active, but optional boot setup did not complete: "+(error instanceof Error?error.message:String(error)));
+    process.exitCode = 1;
+  }
+}
+
 async function cmdMode(args: string[], json = false) {
   const target = args[0]?.toLowerCase();
   if (!target || target === "status") {
@@ -517,6 +563,7 @@ async function cmdMode(args: string[], json = false) {
     const mode = getActiveMode();
     if (mode.mode === "YOLO") {
       console.log("Full System (YOLO) active: " + mode.detail);
+      await offerBootAutostartAfterLocalYolo();
     } else {
       console.error("Full System not confirmed: protected state reports " + mode.mode);
       process.exitCode = 1;

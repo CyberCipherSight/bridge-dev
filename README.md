@@ -67,6 +67,8 @@ Windows dual-boot installations and Windows VMs use the PowerShell command **ins
 
 The persistent service is **optional and Linux-only**. Full System requires a **separately reviewed, independently authorized Linux host controller**; the portable installer does not grant sudo.
 
+After a successful local `bridge-dev mode yolo` confirmation, the CLI now offers a **second, default-No prompt** to enable BridgeDev at boot. Answer `y` to install/enable its existing systemd user unit (creating the normal `default.target.wants` symlink) and, when necessary, run `sudo loginctl enable-linger` for your user. It verifies both settings, never restarts a working gateway, and leaves Tailscale, tokens, and the signed YOLO lease alone. Answer `n` to keep the existing service configuration. If a fresh unit is installed with standard sandboxing, root-command support still requires separately reviewed controller-compatible service configuration; no sandbox is silently weakened. See [persistent service](docs/PERSISTENT_SERVICE.md).
+
 ## Local Admin dashboard: one-click pairing
 
 Use `bridge-dev access` in a **private interactive terminal** to obtain the

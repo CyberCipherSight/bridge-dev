@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { formatMcpEndpoint, isValidSignedLease, inspectLocalMode,
   validateProjectName, resolveProjectDirectory, verifyAuditProof } from "../dist/lib/cli-security.js";
 import { HashAudit } from "../dist/lib/hash-audit.js";
+import {offerPersistentBootService} from "../dist/lib/yolo-autostart.js";
 import {parseCliArguments,cliOption} from "../dist/lib/cli-arguments.js";
 
 const rootArgs=['operator','exec','--json','--cwd','/fixture','--','/bin/echo','--json','--verbose','--cwd','/other'];
@@ -87,6 +88,46 @@ try {
   assert.equal((modeSwitch.match(/verified\.mode !== "STANDARD"/g)||[]).length,2);
   assert.match(modeSwitch,/STANDARD transition not confirmed/);
   assert.match(modeSwitch,/Full System revocation not confirmed/);
+
+  // An optional second confirmation must never modify YOLO state, and must
+  // never install, enable or sudo without explicit operator opt-in.
+  async function bootFixture(initial, decision) {
+    const state={...initial}, actions=[], notes=[];
+    const ops={
+      status:async()=>({...state}),
+      confirm:async()=>{actions.push("confirm");return decision;},
+      install:async()=>{actions.push("install");state.installed=true;state.enabled=true;},
+      enable:async()=>{actions.push("enable");state.enabled=true;},
+      enableLinger:async()=>{actions.push("linger");state.linger=true;},
+      log:(text)=>notes.push(text),
+    };
+    const result=await offerPersistentBootService(ops);
+    return {result,actions,notes,state};
+  }
+  const bootDeclined=await bootFixture({installed:true,enabled:false,linger:false},false);
+  assert.equal(bootDeclined.result,"declined");
+  assert.deepEqual(bootDeclined.actions,["confirm"]);
+  const bootAlready=await bootFixture({installed:true,enabled:true,linger:true,active:true},true);
+  assert.equal(bootAlready.result,"already-enabled");
+  assert.deepEqual(bootAlready.actions,[]);
+  const bootExisting=await bootFixture({installed:true,enabled:false,linger:false,active:true},true);
+  assert.equal(bootExisting.result,"enabled");
+  assert.deepEqual(bootExisting.actions,["confirm","enable","linger"]);
+  const bootFresh=await bootFixture({installed:false,enabled:false,linger:false,active:false},true);
+  assert.equal(bootFresh.result,"enabled");
+  assert.deepEqual(bootFresh.actions,["confirm","install","linger"]);
+  const bootLingerOnly=await bootFixture({installed:true,enabled:true,linger:false,active:true},true);
+  assert.deepEqual(bootLingerOnly.actions,["confirm","linger"]);
+  await assert.rejects(offerPersistentBootService({
+    status:async()=>({installed:true,enabled:false,linger:false}),
+    confirm:async()=>true,
+    install:async()=>{throw Error("not called");},
+    enable:async()=>{throw Error("systemctl failed");},
+    enableLinger:async()=>{throw Error("not called");},
+    log:()=>{},
+  }),/systemctl failed/);
+  assert.match(src,/await offerBootAutostartAfterLocalYolo\(\)/);
+  assert.match(src,/if \(mode\.mode === "YOLO"\)/);
 
   const kp=generateKeyPairSync("ed25519"),now=Date.now();
   const lease={mode:"dangerous",expires_at:now+180000,nonce:"hello"};
