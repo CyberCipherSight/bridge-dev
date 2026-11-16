@@ -109,7 +109,7 @@ try {
   assert.deepEqual(bootDeclined.actions,["confirm"]);
   const bootAlready=await bootFixture({installed:true,enabled:true,linger:true,active:true},true);
   assert.equal(bootAlready.result,"already-enabled");
-  assert.deepEqual(bootAlready.actions,[]);
+  assert.deepEqual(bootAlready.actions,["confirm"]);
   const bootExisting=await bootFixture({installed:true,enabled:false,linger:false,active:true},true);
   assert.equal(bootExisting.result,"enabled");
   assert.deepEqual(bootExisting.actions,["confirm","enable","linger"]);

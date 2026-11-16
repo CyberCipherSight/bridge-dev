@@ -24,16 +24,15 @@ export async function offerPersistentBootService(
   actions: BootServiceActions,
 ): Promise<"already-enabled" | "declined" | "enabled"> {
   const before = await actions.status();
-  if (before.installed && before.enabled && before.linger) {
-    actions.log("BridgeDev service and login linger are already enabled for reboot.");
-    return "already-enabled";
-  }
-
-  // The signed host-root lease must already have been activated and verified
-  // independently. Declining this SECOND opt-in never changes that lease.
+  // Always ask after successful local YOLO confirmation, even if the service
+  // is already persistent. A second yes never creates duplicate units.
   if (!(await actions.confirm())) {
     actions.log("Boot autostart unchanged; Full System authorization is separate.");
     return "declined";
+  }
+  if (before.installed && before.enabled && before.linger) {
+    actions.log("BridgeDev service and login linger are already enabled for reboot.");
+    return "already-enabled";
   }
 
   // Re-read after confirmation: an unrelated operator may have adjusted the unit.
