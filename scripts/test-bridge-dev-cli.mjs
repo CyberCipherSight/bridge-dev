@@ -8,6 +8,8 @@ import { spawnSync } from "node:child_process";
 import { formatMcpEndpoint, isValidSignedLease, inspectLocalMode,
   validateProjectName, resolveProjectDirectory, verifyAuditProof } from "../dist/lib/cli-security.js";
 import { HashAudit } from "../dist/lib/hash-audit.js";
+import {rotateCredentialFile,inspectCredentialFile} from "../dist/lib/token-rotation.js";
+import {swayShortcut} from "../dist/lib/monitor-cli.js";
 import {offerPersistentBootService} from "../dist/lib/yolo-autostart.js";
 import {parseCliArguments,cliOption} from "../dist/lib/cli-arguments.js";
 
@@ -129,6 +131,30 @@ try {
   assert.match(src,/await offerBootAutostartAfterLocalYolo\(\)/);
   assert.match(src,/if \(mode\.mode === "YOLO"\)/);
 
+  // Native credential rotation is operator-owned, backup-first and atomic.
+  // No real machine secrets, services, or independent root controller are touched.
+  const creds=path.join(tmp,"private.env");
+  const original="MCP_TOKEN="+"a".repeat(64)+"\nADMIN_TOKEN="+"b".repeat(64)+"\nPORT=3000\n";
+  fs.writeFileSync(creds,original,{mode:0o600});
+  assert.equal((await inspectCredentialFile(creds)).configured,true);
+  const changed=await rotateCredentialFile(creds,"admin",()=>"c".repeat(64));
+  assert.equal(fs.readFileSync(changed.backup,"utf8"),original);
+  assert.equal(fs.statSync(changed.backup).mode & 0o777,0o600);
+  assert.equal(fs.statSync(creds).mode & 0o777,0o600);
+  assert.equal(fs.readFileSync(creds,"utf8"),original.replace("b".repeat(64),"c".repeat(64)));
+  const duplicate=path.join(tmp,"duplicate.env");
+  fs.writeFileSync(duplicate,original+"ADMIN_TOKEN=other\n",{mode:0o600});
+  await assert.rejects(rotateCredentialFile(duplicate,"admin"),/DUPLICATE_OR_MISSING/);
+  const worldReadable=path.join(tmp,"unsafe.env");
+  fs.writeFileSync(worldReadable,original,{mode:0o644});
+  await assert.rejects(rotateCredentialFile(worldReadable,"admin"),/TOKEN_FILE_UNSAFE/);
+  assert.match(swayShortcut("Mod4+Mod1+d"),/bindsym --no-repeat Mod4\+Mod1\+d/);
+  assert.throws(()=>swayShortcut("Mod4+Mod1+d;rm"),/INVALID_KEY/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/case "update":/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/repos\/kmanisk\/bridge-dev\/commits\/main/);
+  const blocked=run(["token","rotate","admin"]);
+  assert.notEqual(blocked.status,0);
+  assert.match(blocked.stderr,/TOKEN_ROTATION_LOCAL_TTY_REQUIRED/);
   const kp=generateKeyPairSync("ed25519"),now=Date.now();
   const lease={mode:"dangerous",expires_at:now+180000,nonce:"hello"};
   const pem=kp.publicKey.export({type:"spki",format:"pem"});
