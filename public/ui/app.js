@@ -14,7 +14,9 @@ const sections = [
   "audit",
   "connection",
   "settings",
+  "security",
 ];
+let adminSessionReady = false;
 let section = "overview",
   health = {},
   extensions = {},
@@ -39,13 +41,14 @@ function notice(text) {
   $("notice").className = "";
 }
 async function api(url, body, method) {
+  const token = $("admin-credential").value.trim(); // optional manual fallback only
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = "Bearer " + token;
   const r = await fetch(url, {
     method: method || (body === undefined ? "GET" : "POST"),
     cache: "no-store",
-    headers: {
-      Authorization: "Bearer " + $("admin-credential").value,
-      "Content-Type": "application/json",
-    },
+    credentials: "same-origin",
+    headers,
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await r.json();
@@ -166,22 +169,21 @@ function state(value) {
   return value ? "yes" : "no";
 }
 async function refreshAll() {
-  if (!$("admin-credential").value) {
-    notice("Enter the independent admin credential.");
-    return;
-  }
   try {
     health = await api("/health");
+    adminSessionReady = true;
     extensions = await api("/api/extensions");
     await render();
     notice("Loaded. Refresh is manual.");
   } catch (e) {
+    adminSessionReady = false;
     showError(e);
   }
 }
 async function navigate(name) {
   stopActivity();
   section = name;
+  $("security-panel").hidden = name !== "security";
   $("title").textContent = name[0].toUpperCase() + name.slice(1);
   $("filter").value = "";
   document.querySelectorAll("nav button").forEach((b) => {
@@ -295,6 +297,16 @@ async function render() {
   if (section === "audit") return audit();
   if (section === "connection") return connection();
   if (section === "settings") return settings();
+  if (section === "security") return securityPage();
+}
+function securityPage() {
+  heading("Admin session");
+  screen.append(
+    el("p", adminSessionReady
+      ? "Authenticated locally. Your session cookie is HttpOnly and survives page reloads and gateway restarts. It expires after 7 days or when the Admin token is rotated."
+      : "Not authenticated. Run bridge-dev access in a private terminal and open its one-use dashboard pairing link."),
+    el("p", "Disconnect clears the browser cookie. Credentials and signed operator modes are managed separately."),
+  );
 }
 async function overview() {
   const [service, audit, queue] = await Promise.all([
@@ -1140,15 +1152,17 @@ $("login").addEventListener("submit", (e) => {
   void refreshAll();
 });
 $("refresh").addEventListener("click", () => void refreshAll());
-$("disconnect").addEventListener("click", () => {
+$("disconnect").addEventListener("click", async () => {
   stopActivity();
+  try { await api("/api/auth/logout", {}); } catch {}
   $("admin-credential").value = "";
+  adminSessionReady = false;
   health = {};
   extensions = {};
   screen.replaceChildren();
-  $("detail").close();
+  if ($("detail").open) $("detail").close();
   $("detail-body").replaceChildren();
-  notice("Disconnected. Credentials cleared from this page.");
+  notice("Signed out. To reconnect, use the short-lived pairing link from bridge-dev access.");
 });
 document
   .querySelectorAll("nav button")
@@ -1207,14 +1221,28 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "?") $("help-dialog").showModal();
 });
-// Legacy fragment handoff remains supported; immediately remove it from history.
-if (location.hash || location.search) {
-  const params = new URLSearchParams(location.hash.slice(1)),
-    credential = params.get("token") || params.get("admin_token");
-  history.replaceState(null, "", location.pathname);
-  if (credential) $("admin-credential").value = credential;
+async function initializeAdminSession() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const pairing = params.get("pair");
+  const legacy = params.get("token") || params.get("admin_token");
+  // Remove any fragment before asynchronous work or browser navigation.
+  if (location.hash || location.search) history.replaceState(null, "", location.pathname);
+  if (pairing) {
+    const response = await fetch("/api/auth/pair", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-BridgeDev-Pair": "1" },
+      body: JSON.stringify({ code: pairing }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw Error(result.error || "Operator pairing failed or expired");
+  }
+  // Old explicitly supplied fragment is a legacy manual fallback, not persisted.
+  if (legacy) $("admin-credential").value = legacy;
+  await refreshAll();
 }
-if ($("admin-credential").value) void refreshAll();
+void initializeAdminSession().catch(showError);
 
 $("detail").addEventListener("close", stopActivity);
 document.addEventListener("visibilitychange", () => {
