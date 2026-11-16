@@ -133,6 +133,7 @@ try {
 
   // Native credential rotation is operator-owned, backup-first and atomic.
   // No real machine secrets, services, or independent root controller are touched.
+  if (process.platform !== "win32") {
   const creds=path.join(tmp,"private.env");
   const original="MCP_TOKEN="+"a".repeat(64)+"\nADMIN_TOKEN="+"b".repeat(64)+"\nPORT=3000\n";
   fs.writeFileSync(creds,original,{mode:0o600});
@@ -148,6 +149,7 @@ try {
   const worldReadable=path.join(tmp,"unsafe.env");
   fs.writeFileSync(worldReadable,original,{mode:0o644});
   await assert.rejects(rotateCredentialFile(worldReadable,"admin"),/TOKEN_FILE_UNSAFE/);
+  }
   assert.match(swayShortcut("Mod4+Mod1+d"),/bindsym --no-repeat Mod4\+Mod1\+d/);
   assert.throws(()=>swayShortcut("Mod4+Mod1+d;rm"),/INVALID_KEY/);
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/case "update":/);
