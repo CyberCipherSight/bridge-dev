@@ -1,6 +1,7 @@
 import {safeEnvironment,saveSafeEnvironment} from "../lib/safe-environment.js";
 import {getLocalToolOverrides,saveLocalToolOverrides} from "../lib/tool-profile.js";
 import {runtimeVersion} from "../lib/service-config.js";
+import {fetchLatestMainSha} from "../lib/release-notice.js";
 import {getPolicyGate} from "../lib/policy-gateway.js";
 import {getRuntimeMode} from "../lib/runtime.js";
 import {redactAudit} from "../lib/hash-audit.js";
@@ -73,6 +74,25 @@ export function createAdminRouter(manager: McpUpstreamManager, options: {
       checkpoint: getCheckpointConfig(),
       instructions: options.instructionSummary?.() ?? null,
     });
+  });
+
+  // Explicit operator-requested check only. Never poll GitHub or trigger a
+  // deployment from the Admin dashboard; no MCP token or Admin token is sent.
+  router.get("/api/update/check", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const installed = runtimeVersion().commit;
+      const latest = await fetchLatestMainSha();
+      res.json({ ok: true, data: {
+        installed_commit: installed,
+        main_commit: latest,
+        update_available: installed ? installed !== latest : null,
+        update_command: "bridge-dev update",
+        checked_at: new Date().toISOString(),
+      }});
+    } catch {
+      res.status(503).json({ ok: false, error: "UPDATE_CHECK_UNAVAILABLE: inspect network access and try later" });
+    }
   });
 
   // Credentials are returned only by this authenticated, explicit connection view.
