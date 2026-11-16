@@ -461,7 +461,16 @@ async function offerBootAutostartAfterLocalYolo(): Promise<void> {
   if (process.platform !== "linux" || !process.stdin.isTTY || !process.stdout.isTTY) return;
   try {
     await offerPersistentBootService({
-      status: async () => userServiceStatus(),
+      status: async () => {
+        const status=await userServiceStatus();
+        return {
+          installed:status.installed===true,
+          enabled:status.enabled===true,
+          linger:status.linger===true,
+          active:status.active===true,
+          unit:typeof status.unit==="string"?status.unit:undefined,
+        };
+      },
       confirm: async () => {
         const prompt = createInterface({input:process.stdin,output:process.stdout});
         try {
