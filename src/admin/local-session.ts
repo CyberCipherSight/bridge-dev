@@ -55,8 +55,12 @@ export function pairAdminSession(req: Request, res: Response): void {
   // Browser Fetch Metadata varies across local navigation contexts.
   // localhostOnly still refuses a cross-site request or mismatched Origin.
   // A custom header + JSON body + independently signed code are mandatory.
-  if (req.get("x-bridge-dev-pair") !== "1" || !req.is("application/json")) {
-    res.status(403).json({ ok: false, error: "LOCAL_PAIRING_REQUIRES_SAME_ORIGIN" });
+  if (req.get("x-bridge-dev-pair") !== "1") {
+    res.status(403).json({ ok: false, error: "LOCAL_PAIRING_MISSING_CUSTOM_HEADER" });
+    return;
+  }
+  if (!req.is("application/json")) {
+    res.status(403).json({ ok: false, error: "LOCAL_PAIRING_REQUIRES_JSON" });
     return;
   }
   const adminToken = secret();
