@@ -7,6 +7,8 @@ import { spawn } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { atomicJson } from "./atomic-store.js";
+import {runShadowAcceptance} from "./shadow-update.js";
+import {snapshotUpdateLease,assertSameUpdateLease,type UpdateLeaseSnapshot} from "./update-lease.js";
 import { HashAudit, verifyAuditFile } from "./hash-audit.js";
 import {
   readServiceConfig,
@@ -44,6 +46,7 @@ interface ServiceJob {
   browser?: string;
   crash_test?: boolean;
   audit_prefix?: { bytes: number; digest: string; inode: number; mode: number };
+  shadow_lease?: UpdateLeaseSnapshot;
 }
 interface JobResult {
   version: 1;
@@ -277,6 +280,7 @@ async function healthy(
   c: ServiceConfig,
   commit?: string,
   timeout = 20000,
+  expectedFullMachineAccess = false,
 ): Promise<any> {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -285,7 +289,7 @@ async function healthy(
       if (
         h.status === "ok" &&
         (!commit || h.commit === commit) &&
-        h.full_machine_access === false
+        h.full_machine_access === expectedFullMachineAccess
       )
         return h;
       // Only the explicitly operator-seeded rollback release predates commit health.
@@ -309,7 +313,7 @@ async function healthy(
             h.pid === status.pid &&
             response.ok &&
             detail.runtimeMode === "portable" &&
-            detail.fullMachineAccess === false
+            detail.fullMachineAccess === expectedFullMachineAccess
           )
             return h;
         }
