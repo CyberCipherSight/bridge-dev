@@ -429,6 +429,23 @@ export async function checkGateway(
   }
   return healthy(c, c.current);
 }
+/** Positive-only checks for a live gateway whose signed YOLO lease must stay
+ * untouched. The negative suite runs exclusively in the namespace sandbox. */
+export async function checkLeasedGateway(c:ServiceConfig):Promise<any>{
+  const env=privateEnvironment(c.env_file);
+  await healthy(c,c.current,20000,true);
+  const {positiveGatewaySmoke}=await import(
+    pathToFileURL(path.join(sourceRoot,"scripts/deploy-acceptance/positive-client.mjs")).href);
+  return positiveGatewaySmoke({
+    url:`http://127.0.0.1:${c.port}/mcp`,
+    adminUrl:`http://127.0.0.1:${c.admin_port}`,
+    mcpToken:env.MCP_TOKEN,
+    adminToken:env.ADMIN_TOKEN,
+    expectedFullMachineAccess:true,
+    inventory:JSON.parse(await fs.readFile(
+      path.join(c.root,"releases",c.current,"profiles/native-tool-counts.json"),"utf8")).tools.slim,
+  });
+}
 async function freePorts(): Promise<[number, number]> {
   const sockets: net.Server[] = [];
   try {
