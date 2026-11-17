@@ -13,6 +13,7 @@ import {rotateCredentialFile,inspectCredentialFile,credentialFilePath} from "./l
 import {monitorCli} from "./lib/monitor-cli.js";
 import {checkLatestMain,formatUpdateHint} from "./lib/release-notice.js";
 import {runtimeVersion} from "./lib/service-config.js";
+import {coordinatedVerifiedUpdate} from "./lib/coordinated-update.js";
 import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
 import {extensionCli,operatorApi} from "./lib/extension-cli.js";
@@ -944,9 +945,33 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
     console.log("BridgeDev already at latest main: " + sha);
     return;
   }
-  console.log("Updating from verified GitHub main release "+sha+"; no git pull or token changes.");
-  console.log("This requires STANDARD mode, retains rollback and tracks an independent update job.");
-  await serviceCli(["service","update",sha,...(args.includes("--no-wait")?["--no-wait"]:[])],json);
+  // --no-wait has no safe reauthorization point: it cannot be used with an
+  // existing YOLO lease. Never silently re-enable root during acceptance.
+  const initialMode=getActiveMode().mode;
+  if (args.includes("--no-wait")) {
+    if (initialMode!=="STANDARD")
+      throw Error("UPDATE_DETACHED_REQUIRES_STANDARD: switch manually, or use plain bridge-dev update to handle YOLO safely");
+    console.log("Queueing verified update from STANDARD; inspect the durable job ID.");
+    await serviceCli(["service","update",sha,"--no-wait"],json);
+    return;
+  }
+  console.log("Updating from verified GitHub main release "+sha+"; no git pull, credential rotation, or background watcher.");
+  await coordinatedVerifiedUpdate({
+    mode:()=>getActiveMode().mode,
+    interactive:Boolean(process.stdin.isTTY && process.stdout.isTTY && process.getuid?.()!==0),
+    revokeYolo:async()=>runOperator(["mode","standard"]),
+    deployAndWait:async()=>{
+      await serviceCli(["service","update",sha],json);
+      return !process.exitCode;
+    },
+    verifyRelease:async()=>{
+      const current=await userServiceStatus();
+      return current.installed===true && current.active===true &&
+        current.current===sha && getActiveMode().mode==="STANDARD";
+    },
+    restoreYoloWithLocalConfirmation:async()=>runOperator(["yolo","--until-off"]),
+    log:(message)=>console.log(message),
+  });
 }
 async function cmdToken(args: string[]): Promise<void> {
   if (args[0]==="status" && args.length===1) {
@@ -992,7 +1017,7 @@ function cmdHelp() {
   console.log("  doctor                Run comprehensive diagnostics on environment health");
   console.log("  access                Display secure connection instructions (interactive only)");
   console.log("  dashboard             Open locally paired Admin dashboard (Linux local terminal only)");
-  console.log("  update [--check]      Install verified latest GitHub main with existing rollback updater");
+  console.log("  update [--check]      One-command verified main update; temporarily STANDARD, then local YOLO reconfirmation");
   console.log("  update notices       Shown during interactive use; cached six hours, never auto-applied");
   console.log("  token status          Inspect protected token configuration, without values");
   console.log("  token rotate admin    Rotate Admin token with 0600 backup (--restart optional)");
