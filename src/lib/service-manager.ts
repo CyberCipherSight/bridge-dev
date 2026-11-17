@@ -884,11 +884,16 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
     if (Number(disk.bavail) * Number(disk.bsize) < 512 * 1048576)
       throw Error("SERVICE_ROLLBACK_DISK_SPACE_REQUIRED: 512 MiB free");
     await verifyRelease(path.join(root, "releases", job.target), job.target);
-    await probeRelease(
-      path.join(root, "releases", job.target),
-      jobDirectory(root, id),
-    );
-    await requireStandardServiceMode(job.before);
+    if(job.shadow_lease){
+      assertSameUpdateLease(job.shadow_lease,snapshotUpdateLease());
+      const shadow=await runShadowAcceptance(
+        path.join(root,"releases",job.target),jobDirectory(root,id),job.before.port,job.before.node);
+      await record(job,{status:"VERIFYING",acceptance:{shadow}});
+      assertSameUpdateLease(job.shadow_lease,snapshotUpdateLease());
+    }else{
+      await probeRelease(path.join(root,"releases",job.target),jobDirectory(root,id));
+      await requireStandardServiceMode(job.before);
+    }
     if (hash(await fs.readFile(job.before.env_file)) !== job.env_hash)
       throw Error("SERVICE_CREDENTIAL_SOURCE_CHANGED");
     await record(job, { status: "STOPPING" });
@@ -934,9 +939,12 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
     await record(job, { status: "SWITCHED" });
     await systemctl(["reset-failed", next.unit], false);
     await systemctl(["start", next.unit]);
-    await healthy(next, next.current);
-    const acceptance = await checkGateway(next);
-    if (job.crash_test) {
+    await healthy(next,next.current,20000,Boolean(job.shadow_lease));
+    const acceptance = job.shadow_lease
+      ? {shadow_accepted:true,smoke:await checkLeasedGateway(next)}
+      : await checkGateway(next);
+    if(job.shadow_lease)assertSameUpdateLease(job.shadow_lease,snapshotUpdateLease());
+    if (job.crash_test && !job.shadow_lease) {
       const before = await serviceStatus(root);
       await authHealth(next);
       process.kill(before.pid, "SIGKILL");
@@ -963,7 +971,7 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
         pid: (await serviceStatus(root)).pid,
       };
     }
-    if (job.browser) {
+    if (job.browser && !job.shadow_lease) {
       const { acceptAdminBrowser } = await import(
         pathToFileURL(
           path.join(sourceRoot, "scripts/deploy-acceptance/browser.mjs"),
@@ -977,6 +985,7 @@ export async function runServiceJob(root: string, id: string): Promise<void> {
       });
     }
     await assertProtected(job);
+    if(job.shadow_lease)assertSameUpdateLease(job.shadow_lease,snapshotUpdateLease());
     acceptance.completion_audit = await completeServiceAudit(next, {
       operation: job.operation,
       job: id,
