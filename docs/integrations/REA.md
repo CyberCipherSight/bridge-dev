@@ -55,7 +55,7 @@ The final six rejections are intentional:
 | Regex exceeds conservative complexity bound | 2 | `trace_dylib_resolution`, `capture_process_scenario` |
 | Nested variable-width repetition | 4 | `inspect_adb_package`, `uninstall_adb_package`, `start_adb_app`, `stop_adb_app` |
 
-This is a **63-tool net improvement** in validated inventory (190 → 249).
+This is a **59-tool net improvement** in validated inventory (190 → 249).
 No regex constraints were deleted and no relaxation was automatically approved.
 Those six can only be added after a separate, reviewable safety design; a valid
 JavaScript regex is not by itself evidence of linear-time evaluation.
