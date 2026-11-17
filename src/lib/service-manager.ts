@@ -587,7 +587,14 @@ export async function queueServiceOperation(
   target: string,
   root = serviceRoot(),
   transient?: ServiceJob["transient"],
+  options?:{shadowLease:UpdateLeaseSnapshot},
 ): Promise<Record<string, unknown>> {
+  if(options?.shadowLease){
+    if(operation!=="update"||!process.stdin.isTTY||!process.stdout.isTTY||process.getuid?.()===0)
+      throw Error("UPDATE_SHADOW_LOCAL_OPERATOR_TTY_REQUIRED");
+    assertSameUpdateLease(options.shadowLease,snapshotUpdateLease());
+    if(options.shadowLease.mode!=="YOLO")throw Error("UPDATE_SHADOW_REQUIRES_SIGNED_YOLO");
+  }
   const c = await readServiceConfig(root);
   if (!c) throw Error("SERVICE_NOT_INSTALLED");
   await verifyRelease(path.join(root, "releases", target), target);
@@ -626,6 +633,7 @@ export async function queueServiceOperation(
       env_hash: hash(await fs.readFile(c.env_file)),
       browser: process.env.BRIDGEDEV_DEPLOY_BROWSER || undefined,
       crash_test: process.env.BRIDGEDEV_DEPLOY_CRASH_TEST === "true",
+      ...(options?.shadowLease?{shadow_lease:options.shadowLease}:{}),
     };
   await fs.mkdir(jobDirectory(root, id), { recursive: true, mode: 0o700 });
   await atomicJson(path.join(lock, "owner.json"), {
@@ -751,7 +759,7 @@ export async function rollbackServiceJob(
   // Never stop a live service when preflight has not started the transaction.
   if (["PENDING", "VERIFYING"].includes(r.status)) {
     for (const name of await fs.readdir(jobDirectory(root, id)))
-      if (name.startsWith(".probe-"))
+      if (name.startsWith(".probe-") || name.startsWith(".shadow-"))
         await fs.rm(path.join(jobDirectory(root, id), name), {
           recursive: true,
           force: true,
