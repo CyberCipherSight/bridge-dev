@@ -408,7 +408,7 @@ function cmdDashboard(): void {
   }
   const admin = process.env.ADMIN_TOKEN || "";
   const port = process.env.ADMIN_PORT || "3001";
-  if (!/^\\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)
+  if (!/^[0-9]{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)
     throw Error("DASHBOARD_ADMIN_PORT_INVALID");
   if (admin.length < 32)
     throw Error("DASHBOARD_ADMIN_CREDENTIAL_MISSING: verify the operator-owned .env");
