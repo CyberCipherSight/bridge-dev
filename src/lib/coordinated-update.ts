@@ -7,9 +7,10 @@
  * On any failure, leave the system STANDARD for inspection; never elevate
  * while a potentially unfinished acceptance job might still be running.
  */
-export type UpdateMode = "YOLO" | "STANDARD" | "STRICT" | "UNKNOWN";
 export interface CoordinatedUpdateActions {
-  mode(): UpdateMode;
+  // The runtime's signed mode inspector returns a string, which must be
+  // narrowed and verified before any state transition.
+  mode(): string;
   interactive: boolean;
   revokeYolo(): Promise<boolean>;
   deployAndWait(): Promise<boolean>;
