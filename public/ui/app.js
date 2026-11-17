@@ -1705,6 +1705,12 @@ async function initializeAdminSession() {
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw Error(result.error || "Operator pairing failed or expired");
+    // A stale session puts the UI on Access & Security. Successful local
+    // pairing must restore Overview instead of leaving the authenticated
+    // user stranded on the recovery screen.
+    $("admin-credential").value = "";
+    await navigate("overview");
+    return;
   }
   // Old explicitly supplied fragment is a legacy manual fallback, not persisted.
   if (legacy) $("admin-credential").value = legacy;
