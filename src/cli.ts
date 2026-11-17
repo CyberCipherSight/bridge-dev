@@ -9,6 +9,8 @@ import "dotenv/config";
 import {startConfiguredService,installService,controlService} from "./lib/service-manager.js";
 import {offerPersistentBootService} from "./lib/yolo-autostart.js";
 import {serviceCli} from "./lib/service-cli.js";
+import {stageVerifiedGithubRelease} from "./lib/service-release.js";
+import {serviceRoot} from "./lib/service-config.js";
 import {rotateCredentialFile,inspectCredentialFile,credentialFilePath} from "./lib/token-rotation.js";
 import {monitorCli} from "./lib/monitor-cli.js";
 import {checkLatestMain,formatUpdateHint} from "./lib/release-notice.js";
@@ -955,6 +957,16 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
   if (initialMode==="YOLO" &&
       signedBefore.detail!=="verified signed lease; until manually disabled")
     throw Error("UPDATE_TIMED_YOLO_UNSUPPORTED: use an explicit operator mode transition; refusing to extend a timed privilege lease");
+  // Fail before revoking an active YOLO lease when main has not passed CI,
+  // its artifact is missing/corrupted, or staging fails. The later guarded
+  // updater still independently validates the staged release and health.
+  if (initialMode==="YOLO" && !args.includes("--no-wait")) {
+    if (json || !process.stdin.isTTY || !process.stdout.isTTY || process.getuid?.()===0)
+      throw Error("UPDATE_YOLO_LOCAL_TTY_REQUIRED: invoke from your unprivileged private local terminal");
+    console.log("Preflight: verifying GitHub CI and staging the exact release before revoking YOLO.");
+    const staged=await stageVerifiedGithubRelease(sha,serviceRoot());
+    if(staged.commit!==sha) throw Error("UPDATE_PREFLIGHT_SHA_MISMATCH");
+  }
   if (args.includes("--no-wait")) {
     if (initialMode!=="STANDARD")
       throw Error("UPDATE_DETACHED_REQUIRES_STANDARD: switch manually, or use plain bridge-dev update to handle YOLO safely");
