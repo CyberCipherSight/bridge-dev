@@ -987,7 +987,25 @@ export async function updateService(
   const c = await readServiceConfig(root);
   if (!c) throw Error("SERVICE_NOT_INSTALLED");
   await requireStandardServiceMode(c);
-  const staged = await stageVerifiedGithubRelease(ref, root);
+  // Reuse only an exact, manifest-verified release already staged by the
+  // operator's CI/artifact preflight. The transient systemd job deliberately
+  // does not need the operator's gh login or a second network fetch.
+  let staged: {commit: string; release: string};
+  if (/^[a-f0-9]{40}$/.test(ref)) {
+    const candidate = path.join(root, "releases", ref);
+    try {
+      const manifest = await verifyRelease(candidate, ref);
+      if (manifest.evidence?.verified_ci !== true ||
+          manifest.evidence?.repository !== "kmanisk/bridge-dev" ||
+          !Number.isSafeInteger(manifest.evidence?.workflow_run) ||
+          !/^sha256:[a-f0-9]{64}$/.test(String(manifest.evidence?.artifact_digest)))
+        throw Error("SERVICE_STAGED_PROVENANCE_INVALID");
+      staged = {commit:ref,release:candidate};
+    } catch (error) {
+      if (sync.existsSync(candidate)) throw error; // Corruption: never silently replace.
+      staged = await stageVerifiedGithubRelease(ref, root);
+    }
+  } else staged = await stageVerifiedGithubRelease(ref, root);
   if (staged.commit === c.current) {
     await verifyRelease(staged.release, c.current);
     return { already_current: true, current: c.current };
