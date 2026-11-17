@@ -11,6 +11,8 @@ BridgeDev is the TypeScript/Node.js MCP development gateway with signed operator
 
 ## Deployment boundary
 
+Owner workflow preference (2026-11-17): after explicitly requested BridgeDev product or UI changes, complete verified CI and pursue the guarded live deployment, not merely a local source commit. Verify and report whether the running gateway actually picked up the release. `bridge-dev update` is the single local command: stage and verify before a temporary STANDARD maintenance window; run tracked acceptance; restore an existing indefinite YOLO lease only after independent local confirmation. Never bypass the operator terminal requirement, root authorization, CI, or rollback. If the operator-only step cannot run through MCP, report the exact handoff instead of claiming deployment.
+
 A source-repository rename **does not rename or restart** an already-installed production service. Existing installations may still use `local-coder` paths, `LOCAL_CODER_*` environment keys, original systemd unit names and connector IDs for backward compatibility.
 
 The privileged operator CLI, root-owned policy and Ed25519 signing key, append-only ledger and immutable code must be installed by an independent operator under a restricted service account. Do not install from an agent tool call or bypass production preflight.

@@ -85,13 +85,27 @@ button in Overview, without polling. Once a new release has passed CI, the
 operator can update explicitly; the running MCP connection is not interrupted
 merely because main changed.
 
-On managed Linux installations, run `bridge-dev update --check` to compare the
-installed release with the current GitHub `main` SHA. `bridge-dev update` calls
-the existing exact-SHA, CI-verified, rollback-protected systemd updater. It does
-**not** run `git pull`, modify dirty source checkouts or silently rotate tokens.
-`--no-wait` returns a durable job ID. A healthy STANDARD gateway is required:
-revoke YOLO locally before updating and reactivate it deliberately afterwards.
-For a portable installation without systemd, use its documented installer.
+On managed Linux installations, `bridge-dev update --check` compares the
+installed release against GitHub `main`. **`bridge-dev update` is one command
+from either STANDARD or an already authorized YOLO session**:
+
+- STANDARD: stage the exact SHA, verify CI and artifact integrity, perform the
+  guarded update and wait for independent acceptance.
+- YOLO: from a private interactive Linux terminal, temporarily revoke the
+  signed lease, run the same guarded STANDARD acceptance, then offer a **fresh
+  independent local operator confirmation** to restore the previously active
+  indefinite YOLO authorization. No manual `mode standard` or `mode yolo`
+  commands are necessary. Reauthorization is never silent.
+- If cutover fails, rolls back, or the job is still pending, BridgeDev **stays
+  STANDARD** for inspection; it never reactivates root during unfinished
+  acceptance. A user declining reauthorization leaves the successful release
+  in STANDARD.
+- `--no-wait` returns the durable job ID only from STANDARD. It is refused
+  with YOLO because an asynchronous job has no safe restoration point.
+
+The updater does **not** run `git pull`, modify dirty source checkouts,
+rotate tokens, recreate services or weaken Policy Gateway. Portable installs
+without a managed Linux service retain their separate installer workflow.
 
 From an **interactive local terminal**, `bridge-dev token rotate admin` or
 `bridge-dev token rotate mcp` creates a private timestamped mode-0600 backup
@@ -116,6 +130,26 @@ local monitor with `bridge-dev monitor doctor` (no credential output); a
 tab displays the verified policy mode from the authenticated gateway (STANDARD
 or dangerous), never from the last local `bridge-dev mode` output. Root
 authorization is only controlled through independent local operator approval.
+
+## Local dashboard recovery without typing an Admin token
+
+After Admin-token rotation or an expired seven-day browser session, a bare
+visit to `http://127.0.0.1:3001/ui/` is unauthenticated. The dashboard now
+opens **Access & Security** with a recovery instruction instead of showing
+a blank “Invalid admin token” screen. This is **not a gateway outage** and
+does not warrant credential rotation or a service restart.
+
+On Linux, run `bridge-dev dashboard` in your **own private interactive
+terminal**. It uses the current protected operator configuration to launch
+the normal browser with a 60-second, one-use signed pairing fragment. The
+fragment is removed from the address bar immediately by the dashboard, and
+the persistent Admin bearer is never displayed. The CLI refuses non-TTY
+and remote execution. On an older release, `bridge-dev access` and open its
+one-time pairing link instead.
+
+No unauthenticated localhost endpoint can reveal or mint the Admin bearer,
+and the dashboard cannot independently initiate privileged pairing merely
+because somebody browses to 127.0.0.1.
 
 ## Local Admin dashboard: one-click pairing
 

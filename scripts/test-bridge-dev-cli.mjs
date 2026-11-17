@@ -12,6 +12,7 @@ import {rotateCredentialFile,inspectCredentialFile} from "../dist/lib/token-rota
 import {swayShortcut} from "../dist/lib/monitor-cli.js";
 import {checkLatestMain,fetchLatestMainSha,formatUpdateHint,UPDATE_CHECK_TTL_MS} from "../dist/lib/release-notice.js";
 import {offerPersistentBootService} from "../dist/lib/yolo-autostart.js";
+import {coordinatedVerifiedUpdate} from "../dist/lib/coordinated-update.js";
 import {parseCliArguments,cliOption} from "../dist/lib/cli-arguments.js";
 
 const rootArgs=['operator','exec','--json','--cwd','/fixture','--','/bin/echo','--json','--verbose','--cwd','/other'];
@@ -174,6 +175,71 @@ try {
   assert.equal(formatUpdateHint({...first,current:latest,update_available:false}),null);
   await assert.rejects(fetchLatestMainSha(async()=>new Response(JSON.stringify({sha:"invalid"}),{status:200})),/INVALID_MAIN_COMMIT/);
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/BRIDGEDEV_UPDATE_NOTICE/);
+  // Managed updates must remain safe from either originally authorized
+  // mode. All operations here are mocked; no real lease or service is changed.
+  const makeUpdate = (initial, overrides = {}) => {
+    let mode = initial;
+    const events = [];
+    const actions = {
+      mode: () => mode,
+      interactive: true,
+      revokeYolo: async () => { events.push("revoke"); mode = "STANDARD"; return true; },
+      deployAndWait: async () => { events.push("deploy"); return true; },
+      verifyRelease: async () => { events.push("verify"); return true; },
+      restoreYoloWithLocalConfirmation: async () => { events.push("reauthorize"); mode = "YOLO"; return true; },
+      log: (message) => events.push("log:" + message),
+      ...overrides,
+    };
+    return { actions, events, final:()=>mode };
+  };
+  const standardUpdate=makeUpdate("STANDARD");
+  assert.deepEqual(await coordinatedVerifiedUpdate(standardUpdate.actions),
+    {updated:true,original_mode:"STANDARD",final_mode:"STANDARD"});
+  assert.deepEqual(standardUpdate.events,["deploy","verify"]);
+  const yoloUpdate=makeUpdate("YOLO");
+  assert.deepEqual(await coordinatedVerifiedUpdate(yoloUpdate.actions),
+    {updated:true,original_mode:"YOLO",final_mode:"YOLO"});
+  assert.deepEqual(yoloUpdate.events.filter(x=>!x.startsWith("log:")),
+    ["revoke","deploy","verify","reauthorize"]);
+  const unattended=makeUpdate("YOLO",{interactive:false});
+  await assert.rejects(coordinatedVerifiedUpdate(unattended.actions),/LOCAL_TTY_REQUIRED/);
+  assert.deepEqual(unattended.events,[]);
+  const strictUpdate=makeUpdate("STRICT");
+  await assert.rejects(coordinatedVerifiedUpdate(strictUpdate.actions),/MODE_UNVERIFIED/);
+  assert.deepEqual(strictUpdate.events,[]);
+  const deniedRevocation=makeUpdate("YOLO",{revokeYolo:async()=>false});
+  await assert.rejects(coordinatedVerifiedUpdate(deniedRevocation.actions),/REVOCATION_UNVERIFIED/);
+  assert.equal(deniedRevocation.events.filter(x=>x==="deploy").length,0);
+  const rolledBack=makeUpdate("YOLO",{deployAndWait:async()=>false});
+  await assert.rejects(coordinatedVerifiedUpdate(rolledBack.actions),/ACCEPTANCE_UNVERIFIED/);
+  assert.equal(rolledBack.final(),"STANDARD");
+  assert.equal(rolledBack.events.includes("reauthorize"),false);
+  const pending=makeUpdate("YOLO",{deployAndWait:async()=>{throw Error("PENDING");}});
+  await assert.rejects(coordinatedVerifiedUpdate(pending.actions),/PENDING/);
+  assert.equal(pending.final(),"STANDARD");
+  assert.equal(pending.events.includes("reauthorize"),false);
+  const unverified=makeUpdate("YOLO",{verifyRelease:async()=>false});
+  await assert.rejects(coordinatedVerifiedUpdate(unverified.actions),/ACCEPTANCE_UNVERIFIED/);
+  assert.equal(unverified.events.includes("reauthorize"),false);
+  const refused=makeUpdate("YOLO",{restoreYoloWithLocalConfirmation:async()=>false});
+  await assert.rejects(coordinatedVerifiedUpdate(refused.actions),/YOLO_NOT_RESTORED/);
+  assert.equal(refused.final(),"STANDARD");
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/UPDATE_DETACHED_REQUIRES_STANDARD/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/UPDATE_TIMED_YOLO_UNSUPPORTED/);
+  const updateSource=fs.readFileSync("src/cli.ts","utf8");
+  assert.match(updateSource,/stageVerifiedGithubRelease\(sha,serviceRoot\(\)\)/);
+  assert.ok(updateSource.indexOf("stageVerifiedGithubRelease(sha,serviceRoot())") <
+    updateSource.indexOf("await coordinatedVerifiedUpdate({"));
+  assert.match(updateSource,/UPDATE_PREFLIGHT_SHA_MISMATCH/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/interactive:Boolean\(!json/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/coordinatedVerifiedUpdate/);
+  // A remote/non-TTY client cannot mint or launch an Admin pairing link.
+  // No long-lived bearer or signed link may appear in stdout/stderr.
+  const dashboardBlocked=run(["dashboard"]);
+  assert.notEqual(dashboardBlocked.status,0);
+  assert.match(dashboardBlocked.stderr,/DASHBOARD_LOCAL_TTY_REQUIRED/);
+  assert.doesNotMatch(dashboardBlocked.stdout + dashboardBlocked.stderr,/p1\\.[0-9]{13}\\./);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/case "dashboard":/);
   const blocked=run(["token","rotate","admin"]);
   assert.notEqual(blocked.status,0);
   assert.match(blocked.stderr,/TOKEN_ROTATION_LOCAL_TTY_REQUIRED/);

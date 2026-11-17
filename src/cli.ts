@@ -9,10 +9,13 @@ import "dotenv/config";
 import {startConfiguredService,installService,controlService} from "./lib/service-manager.js";
 import {offerPersistentBootService} from "./lib/yolo-autostart.js";
 import {serviceCli} from "./lib/service-cli.js";
+import {stageVerifiedGithubRelease} from "./lib/service-release.js";
+import {serviceRoot} from "./lib/service-config.js";
 import {rotateCredentialFile,inspectCredentialFile,credentialFilePath} from "./lib/token-rotation.js";
 import {monitorCli} from "./lib/monitor-cli.js";
 import {checkLatestMain,formatUpdateHint} from "./lib/release-notice.js";
 import {runtimeVersion} from "./lib/service-config.js";
+import {coordinatedVerifiedUpdate} from "./lib/coordinated-update.js";
 import {readServiceConfig,serviceStatus as userServiceStatus} from "./lib/service-config.js";
 import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
 import {extensionCli,operatorApi} from "./lib/extension-cli.js";
@@ -392,6 +395,35 @@ function cmdWorkspace(args: string[], json = false) {
 
   console.error("Usage: bridge-dev workspace [list | add <path> | remove <path>]");
   process.exitCode = 1;
+}
+
+/**
+ * Re-pair a local browser without exposing the long-lived Admin credential.
+ * A local interactive operator must initiate this action; remote MCP calls,
+ * pipes, and redirected output may never mint or open pairing links.
+ */
+function cmdDashboard(): void {
+  if (getRuntimeMode() !== "portable" || !process.stdin.isTTY || !process.stdout.isTTY) {
+    throw Error("DASHBOARD_LOCAL_TTY_REQUIRED: launch from your own private local terminal");
+  }
+  if (process.platform !== "linux") {
+    throw Error("DASHBOARD_OPENER_UNAVAILABLE: use bridge-dev access from your private terminal");
+  }
+  const admin = process.env.ADMIN_TOKEN || "";
+  const port = process.env.ADMIN_PORT || "3001";
+  if (!/^[0-9]{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)
+    throw Error("DASHBOARD_ADMIN_PORT_INVALID");
+  if (admin.length < 32)
+    throw Error("DASHBOARD_ADMIN_CREDENTIAL_MISSING: verify the operator-owned .env");
+  const link = `http://127.0.0.1:${port}/ui/#pair=${mintAdminPairCode(admin)}`;
+  const result = spawnSync("xdg-open", [link], {
+    stdio: "ignore",
+    timeout: 8000,
+  });
+  if (result.error || result.status !== 0)
+    throw Error("DASHBOARD_BROWSER_OPEN_FAILED: use bridge-dev access for a one-use pairing link");
+  console.log("Opened BridgeDev dashboard with a 60-second signed local pairing link.");
+  console.log("No Admin bearer token was printed or stored by the CLI.");
 }
 
 function cmdAccess(): void {
@@ -915,9 +947,50 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
     console.log("BridgeDev already at latest main: " + sha);
     return;
   }
-  console.log("Updating from verified GitHub main release "+sha+"; no git pull or token changes.");
-  console.log("This requires STANDARD mode, retains rollback and tracks an independent update job.");
-  await serviceCli(["service","update",sha,...(args.includes("--no-wait")?["--no-wait"]:[])],json);
+  // --no-wait has no safe reauthorization point: it cannot be used with an
+  // existing YOLO lease. Never silently re-enable root during acceptance.
+  const signedBefore=getActiveMode();
+  const initialMode=signedBefore.mode;
+  // A time-limited YOLO lease must never be silently widened to the
+  // indefinite --until-off lease. This one-command flow currently supports
+  // only the independently authorized until-off lease.
+  if (initialMode==="YOLO" &&
+      signedBefore.detail!=="verified signed lease; until manually disabled")
+    throw Error("UPDATE_TIMED_YOLO_UNSUPPORTED: use an explicit operator mode transition; refusing to extend a timed privilege lease");
+  // Fail before revoking an active YOLO lease when main has not passed CI,
+  // its artifact is missing/corrupted, or staging fails. The later guarded
+  // updater still independently validates the staged release and health.
+  if (initialMode==="YOLO" && !args.includes("--no-wait")) {
+    if (json || !process.stdin.isTTY || !process.stdout.isTTY || process.getuid?.()===0)
+      throw Error("UPDATE_YOLO_LOCAL_TTY_REQUIRED: invoke from your unprivileged private local terminal");
+    console.log("Preflight: verifying GitHub CI and staging the exact release before revoking YOLO.");
+    const staged=await stageVerifiedGithubRelease(sha,serviceRoot());
+    if(staged.commit!==sha) throw Error("UPDATE_PREFLIGHT_SHA_MISMATCH");
+  }
+  if (args.includes("--no-wait")) {
+    if (initialMode!=="STANDARD")
+      throw Error("UPDATE_DETACHED_REQUIRES_STANDARD: switch manually, or use plain bridge-dev update to handle YOLO safely");
+    console.log("Queueing verified update from STANDARD; inspect the durable job ID.");
+    await serviceCli(["service","update",sha,"--no-wait"],json);
+    return;
+  }
+  console.log("Updating from verified GitHub main release "+sha+"; no git pull, credential rotation, or background watcher.");
+  await coordinatedVerifiedUpdate({
+    mode:()=>getActiveMode().mode,
+    interactive:Boolean(!json && process.stdin.isTTY && process.stdout.isTTY && process.getuid?.()!==0),
+    revokeYolo:async()=>runOperator(["mode","standard"]),
+    deployAndWait:async()=>{
+      await serviceCli(["service","update",sha],json);
+      return !process.exitCode;
+    },
+    verifyRelease:async()=>{
+      const current=await userServiceStatus();
+      return current.installed===true && current.active===true &&
+        current.current===sha && getActiveMode().mode==="STANDARD";
+    },
+    restoreYoloWithLocalConfirmation:async()=>runOperator(["yolo","--until-off"]),
+    log:(message)=>console.log(message),
+  });
 }
 async function cmdToken(args: string[]): Promise<void> {
   if (args[0]==="status" && args.length===1) {
@@ -962,7 +1035,8 @@ function cmdHelp() {
   console.log("  status                Show gateway status, mode, sessions, and endpoint");
   console.log("  doctor                Run comprehensive diagnostics on environment health");
   console.log("  access                Display secure connection instructions (interactive only)");
-  console.log("  update [--check]      Install verified latest GitHub main with existing rollback updater");
+  console.log("  dashboard             Open locally paired Admin dashboard (Linux local terminal only)");
+  console.log("  update [--check]      One-command verified main update; temporarily STANDARD, then local YOLO reconfirmation");
   console.log("  update notices       Shown during interactive use; cached six hours, never auto-applied");
   console.log("  token status          Inspect protected token configuration, without values");
   console.log("  token rotate admin    Rotate Admin token with 0600 backup (--restart optional)");
@@ -1037,6 +1111,9 @@ async function main() {
       break;
     case "access":
       cmdAccess();
+      break;
+    case "dashboard":
+      cmdDashboard();
       break;
     case "update":
       await cmdUpdate(args.slice(1),json);

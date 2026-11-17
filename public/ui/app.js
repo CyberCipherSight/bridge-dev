@@ -54,7 +54,11 @@ async function api(url, body, method) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await r.json();
-  if (!r.ok) throw Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    const error = new Error(data.error || `HTTP ${r.status}`);
+    error.status = r.status;
+    throw error;
+  }
   return data.ok && Object.prototype.hasOwnProperty.call(data, "data")
     ? data.data
     : data;
@@ -170,6 +174,31 @@ function controls(...buttons) {
 function state(value) {
   return value ? "yes" : "no";
 }
+function showPairingRequired() {
+  // An expired/revoked browser cookie is not evidence that the host's Admin
+  // token is invalid. Never attempt an unauthenticated localhost token bootstrap.
+  adminSessionReady = false;
+  $("admin-credential").value = "";
+  health = {};
+  extensions = {};
+  section = "security";
+  stopActivity();
+  $("security-panel").hidden = false;
+  $("title").textContent = "Access & Security";
+  $("filter").value = "";
+  document.querySelectorAll("nav button").forEach((button) => {
+    if (button.dataset.tab === "security") button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  screen.replaceChildren(
+    el("h2", "Local Admin session needs pairing"),
+    el("p", "The running gateway is not necessarily offline. Your browser session may have expired or been invalidated by Admin-token rotation."),
+    el("p", "In your private local terminal, run:"),
+    pre("bridge-dev dashboard"),
+    el("p", "This opens a one-use, 60-second signed pairing link without typing or displaying the long-lived Admin token. If this CLI is older, run bridge-dev access and open its local pairing link instead."),
+  );
+  notice("Re-pair this browser locally to restore the dashboard.");
+}
 async function refreshAll() {
   try {
     health = await api("/health");
@@ -180,8 +209,9 @@ async function refreshAll() {
     $("sync-status").textContent = "Updated " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + " · manual";
   } catch (e) {
     adminSessionReady = false;
-    $("sync-status").textContent = "Refresh failed";
-    showError(e);
+    $("sync-status").textContent = e.status === 401 ? "Re-pair required" : "Refresh failed";
+    if (e.status === 401) showPairingRequired();
+    else showError(e);
   }
 }
 async function navigate(name) {
@@ -437,7 +467,7 @@ async function overview() {
       }),
     ),
     updateResult,
-    el("p", "From your local terminal: bridge-dev update --check; bridge-dev update. Updating requires STANDARD mode and passes exact-commit CI, artifact integrity, and rollback acceptance."),
+    el("p", "Run bridge-dev update from your local terminal. With an active indefinite YOLO lease, the CLI verifies and stages first, coordinates temporary STANDARD acceptance, tracks the deployment job and asks for independent local confirmation before restoring YOLO. On failure it stays STANDARD. No manual mode-switch commands needed."),
   );
 }
 async function customView() {
@@ -1389,17 +1419,30 @@ async function initializeAdminSession() {
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw Error(result.error || "Operator pairing failed or expired");
+    // A stale session puts the UI on Access & Security. Successful local
+    // pairing must restore Overview instead of leaving the authenticated
+    // user stranded on the recovery screen.
+    $("admin-credential").value = "";
+    await navigate("overview");
+    return;
   }
   // Old explicitly supplied fragment is a legacy manual fallback, not persisted.
   if (legacy) $("admin-credential").value = legacy;
   await refreshAll();
 }
-void initializeAdminSession().catch(showError);
+function showPairingError(error) {
+  if (error.status === 401 || /^LOCAL_PAIRING_/.test(error.message || "")) {
+    showPairingRequired();
+    return;
+  }
+  showError(error);
+}
+void initializeAdminSession().catch(showPairingError);
 window.addEventListener("hashchange", () => {
   // Opening a fresh pairing link in an existing tab is a same-document
   // navigation; run pairing explicitly instead of waiting for a page reload.
   if (new URLSearchParams(location.hash.slice(1)).has("pair"))
-    void initializeAdminSession().catch(showError);
+    void initializeAdminSession().catch(showPairingError);
 });
 
 $("detail").addEventListener("close", stopActivity);

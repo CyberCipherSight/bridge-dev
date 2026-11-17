@@ -68,12 +68,34 @@ still has to pass exact-SHA CI and guarded update acceptance.
 `bridge-dev update --check` retrieves the current GitHub `main` SHA
 through the operator's authenticated `gh` CLI and reports whether the installed
 release differs, without modifying the service.
-`bridge-dev update` calls the existing `service update <exact-sha>` workflow,
-which checks successful exact-commit CI, verified artifacts/digests, STANDARD
-mode and protected rollback acceptance. It never runs `git pull`, overwrites
-dirty checkouts, changes Funnel, rotates tokens or silently enables YOLO.
-`--no-wait` returns a durable job ID; inspect it before retrying. A service
-restart occurs only as part of the reviewed updater's guarded cutover.
+`bridge-dev update` is the **single-command operator workflow**, accepting
+either STANDARD or an independently signed, active YOLO lease. In YOLO from
+an interactive local terminal it **first verifies GitHub CI and stages
+the exact artifact** while authorization remains unchanged. Only when that
+preflight succeeds does it invoke the root-owned operator script to revoke
+authorization to STANDARD, then call the existing
+`service update <exact-sha>` flow. That flow validates exact-commit CI,
+artifact integrity, native and reviewed optional tool inventories, protected
+rollback and acceptance. Only after terminal SUCCESS, installed SHA equality,
+active service status and verified STANDARD state does the CLI offer
+independent local operator confirmation to reauthorize the prior YOLO mode.
+
+The operator runs one command, not separate `mode standard` and `mode yolo` commands. A durable, independently tracked update job runs after the temporary STANDARD transition, not with unrestricted root privileges inherited from the MCP gateway. Acceptance explicitly checks that privileged operations are denied, so a YOLO subprocess cannot substitute for STANDARD acceptance. After an interrupted CLI or pending job, inspect `bridge-dev service status --job <uuid> --json` and `bridge-dev service logs --job <uuid>` before retrying.
+
+Only an already authorized **indefinite** YOLO lease uses this automatic
+restore path. A timed lease is rejected before any mode transition, because
+restoring it as indefinite would widen privileges. Machine-readable
+`--json` cannot initiate a YOLO transition.
+
+If the update fails, rolls back, remains pending or the local operator declines
+new root confirmation, the CLI does not silently restore privilege. Incomplete
+acceptance leaves STANDARD for operator inspection. Remote and noninteractive
+calls cannot initiate YOLO transition. `--no-wait` is available only when
+already STANDARD; it never reactivates privilege asynchronously.
+
+This does not run `git pull`, modify source checkouts, rotate credentials,
+change Funnel, install a new persistent service or weaken systemd sandboxing.
+Only the existing guarded updater controls the service restart at cutover.
 
 ### Optional MCP providers during release acceptance
 
