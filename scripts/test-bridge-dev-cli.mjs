@@ -174,6 +174,13 @@ try {
   assert.equal(formatUpdateHint({...first,current:latest,update_available:false}),null);
   await assert.rejects(fetchLatestMainSha(async()=>new Response(JSON.stringify({sha:"invalid"}),{status:200})),/INVALID_MAIN_COMMIT/);
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/BRIDGEDEV_UPDATE_NOTICE/);
+  // A remote/non-TTY client cannot mint or launch an Admin pairing link.
+  // No long-lived bearer or signed link may appear in stdout/stderr.
+  const dashboardBlocked=run(["dashboard"]);
+  assert.notEqual(dashboardBlocked.status,0);
+  assert.match(dashboardBlocked.stderr,/DASHBOARD_LOCAL_TTY_REQUIRED/);
+  assert.doesNotMatch(dashboardBlocked.stdout + dashboardBlocked.stderr,/p1\\.[0-9]{13}\\./);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/case "dashboard":/);
   const blocked=run(["token","rotate","admin"]);
   assert.notEqual(blocked.status,0);
   assert.match(blocked.stderr,/TOKEN_ROTATION_LOCAL_TTY_REQUIRED/);
