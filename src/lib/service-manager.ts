@@ -712,6 +712,11 @@ async function loadJob(root: string, id: string): Promise<ServiceJob> {
     (job.crash_test !== undefined && typeof job.crash_test !== "boolean")
   )
     throw Error("SERVICE_JOB_ACCEPTANCE_INVALID");
+  if(job.shadow_lease && (job.operation!=="update" ||
+    job.shadow_lease.mode!=="YOLO" || job.shadow_lease.scope!=="host-root-v1" ||
+    !/^[a-f0-9]{64}$/.test(job.shadow_lease.fingerprint) ||
+    (job.shadow_lease.expires_at!==null && !Number.isSafeInteger(job.shadow_lease.expires_at))))
+    throw Error("SERVICE_SHADOW_LEASE_PROOF_INVALID");
   const config = await readServiceConfig(root);
   if (
     !config ||
@@ -856,7 +861,11 @@ export async function rollbackServiceJob(
   } else {
     await systemctl(["reset-failed", job.before.unit], false);
     await systemctl(["start", job.before.unit]);
-    await healthy(job.before, job.before.current);
+    await healthy(job.before,job.before.current,20000,Boolean(job.shadow_lease));
+    if(job.shadow_lease){
+      assertSameUpdateLease(job.shadow_lease,snapshotUpdateLease());
+      await checkLeasedGateway(job.before);
+    }
   }
   await assertProtected(job);
   await record(job, {
