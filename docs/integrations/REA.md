@@ -87,3 +87,19 @@ node scripts/test-reviewed-providers.mjs \
 The harness uses random ports, disposable credentials, HOME/XDG/state/workspace
 and operator-reviewed local executables. Package acquisition is a separate,
 explicit operator action; tests never fetch packages or analysis engines.
+
+## Managed YOLO and the 190-tool selection
+
+With the independently signed YOLO lease active, BridgeDev now honors R/W/X
+classifications from enabled, operator-reviewed MCP providers. The REA proposal
+pins **190 schema-valid tool names**. The prior 3 guidance methods retain R;
+the other 187 default to X. The signed mode permits use of that approved tool
+selection without reauthorizing each tool name, but does **not** elevate REA's
+OS process to root or install missing analysis engines.
+
+After the operator runs `bridge-dev update`, approve the exact REA provider
+proposal in the local Dashboard → Approvals (or with the operator-authorized
+CLI). Refresh/reconnect the ChatGPT BridgeDev connection to obtain the expanded
+tool list. Live client-side invocation and any binary-analysis backend remain
+separate acceptance steps. Moving back to STANDARD intentionally restores the
+independent managed policy rather than trusting unprivileged provider metadata.

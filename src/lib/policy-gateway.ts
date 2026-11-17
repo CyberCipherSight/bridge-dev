@@ -118,7 +118,16 @@ export class PolicyGate {
   readonly audit: HashAudit;
   private providerPermissions:Record<string,ToolClass>={};
   setProviderPermissions(value:Record<string,ToolClass>):void{this.providerPermissions=value;}
-  getProxyPermissions():Record<string,ToolClass>{return getRuntimeMode()==="portable"?{...this.providerPermissions,...this.config.proxy_tools}:this.config.proxy_tools;}
+  getProxyPermissions(profile: "strict" | "standard" | "dangerous" = this.getActiveProfile()):Record<string,ToolClass>{
+    // In managed STANDARD/STRICT, only the independently installed policy may
+    // classify a provider tool. A provider's editable registry never silently
+    // expands that policy. The signed YOLO activation authorizes the broader
+    // individually reviewed classifications until the activation is revoked.
+    // Static operator policy always takes precedence over dynamic metadata.
+    return getRuntimeMode()==="portable" || profile==="dangerous"
+      ? {...this.providerPermissions,...this.config.proxy_tools}
+      : {...this.config.proxy_tools};
+  }
   constructor(file?: string) {
     if (!file && getRuntimeMode() === "portable") {
       this.configPath = path.join(portableStateDir(), "portable-policy.json");

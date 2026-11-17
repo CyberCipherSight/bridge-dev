@@ -5,6 +5,7 @@ import {ProviderTransport} from "./provider-transport.js";
 import {safeFetch} from "./safe-network.js";
 import {validateToolArguments,inspectProviderTools,sanitizeProviderResult,proxyToolName} from "./provider-security.js";
 import {getPolicyGate} from "./policy-gateway.js";
+import {getRuntimeMode} from "./runtime.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -99,7 +100,19 @@ export class McpUpstreamManager {
 
   private syncPermissions():void{
     const permissions:Record<string,"R"|"W"|"X">={};
-    for(const config of this.config.servers)if(config.enabled&&this.providerAllowed(config.id))for(const [name,kind]of Object.entries(config.tool_permissions||{}))if(config.expose==="all"||config.tools?.includes(name))permissions[proxyToolName(config.tool_prefix||config.id,name)]=kind;
+    for(const config of this.config.servers){
+      // Managed YOLO inherits only the independently reviewed *exact* provider
+      // tool names. An imported, merely discovered or disabled definition must
+      // not alter its authorization classes. Portable mode preserves the
+      // existing user-owned reviewed provider behavior.
+      if(!config.enabled||!this.providerAllowed(config.id)||config.expose==="none"||config.expose==="meta_only")continue;
+      if(getRuntimeMode()==="managed"&&config.reviewed!==true)continue;
+      for(const [name,kind]of Object.entries(config.tool_permissions||{})){
+        if((config.disabled_tools||[]).includes(name))continue;
+        if(config.expose==="all"||config.tools?.includes(name))
+          permissions[proxyToolName(config.tool_prefix||config.id,name)]=kind;
+      }
+    }
     getPolicyGate().setProviderPermissions(permissions);
   }
   registerMcpServer(server: McpServer): void {

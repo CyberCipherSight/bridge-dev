@@ -20,6 +20,31 @@ BridgeDev is a self-hosted Model Context Protocol server with server-side author
 | STANDARD | Routine development inside explicitly approved roots; privileged/destructive commands need operator approval |
 | YOLO (Full System) | Explicit operator-signed lease enables host-root commands until manually disabled; timed leases remain optional |
 
+### Reviewed upstream MCP tools in managed YOLO
+
+Managed STRICT and STANDARD continue to classify proxied MCP tools exclusively
+from the independently installed policy. In managed YOLO, BridgeDev additionally
+recognizes the **exact R/W/X classes** of enabled, explicitly reviewed upstream
+tools. The verified YOLO mode is checked for each request; disabling or expiring
+the signed lease immediately returns to the independent policy classifications.
+An operator-owned policy override always wins. Unreviewed or disabled providers,
+blocked integration preferences, explicitly disabled tools, and tools absent from
+the reviewed selection cannot acquire classifications from provider metadata.
+
+This expands **MCP policy classification**, not the privilege of upstream
+processes: a provider still executes under its existing service UID and transport
+permissions. YOLO does not secretly run arbitrary upstream executables as host
+root, install analysis engines, expose unsupported schemas, or approve provider
+registration. Context/session authorization, server authentication, and tool
+argument/output validation remain in effect. A provider's own write/execute
+capabilities can still be dangerous even without root; only import trusted MCPs.
+
+Source regression: `scripts/test-managed-yolo-proxy-permissions.mjs` checks
+STRICT/STANDARD isolation, signed-mode classification semantics, static policy
+precedence, unknown-default-X, and immediate removal of dynamic permissions.
+The independent host-controller suite tests signed lease and revocation, while
+the separate REA fixture proves discovery of all 190 schema-valid methods.
+
 Do not assume that application-level checks alone protect the host. Shell and upstream code may be indirect execution channels. Linux UID separation, filesystem permissions, namespace restrictions and operator independence remain essential.
 
 ## Development verification

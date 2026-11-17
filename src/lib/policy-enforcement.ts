@@ -29,7 +29,7 @@ function deny(session:PolicySession,gate:PolicyGate,message:string,contextOnly=f
 export async function enforcePolicy(gate:PolicyGate,session:PolicySession,tool:string,args:Record<string,unknown>,contextToken:unknown=args.context_token):Promise<PolicyAuthorization> {
   const activeProfile = gate.getActiveProfile();
   const config = activeProfile === gate.config.profile ? gate.config : { ...gate.config, profile: activeProfile };
-  const cls=classifyTool(tool,args,gate.getProxyPermissions());
+  const cls=classifyTool(tool,args,gate.getProxyPermissions(activeProfile));
   if(session.revoked)throw new Error("POLICYGATE_SESSION_CLOSED: initialize a new session and reload context");
   if(session.locked) {
     if(store(gate).consumeUnlock(session.id)){session.locked=false;session.consecutiveDenials=0;}
