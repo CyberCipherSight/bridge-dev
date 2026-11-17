@@ -4,6 +4,23 @@ The Admin listener is **loopback-only** (usually `http://127.0.0.1:3001/ui/`).
 It is separate from the public MCP listener and its token. Do not expose port
 3001 through Tailscale Funnel.
 
+## Local operator recovery after a stale browser session
+
+A revoked, expired, or rotated Admin browser session can produce HTTP 401
+while the gateway and operator-owned Admin token remain valid. The UI treats
+that as a **pairing required** state and presents Access & Security guidance,
+not an erroneous gateway-offline or invalid-token diagnosis.
+
+For Linux, `bridge-dev dashboard` requires an independent interactive local
+terminal and uses the current operator credentials to open a signed, 60-second
+single-use pairing fragment via `xdg-open`. It never prints the bearer or
+one-use code. The browser removes the fragment immediately after parsing it.
+An older CLI can use `bridge-dev access` and its existing one-use link.
+
+Do not create an unauthenticated, self-service localhost endpoint to read
+ADMIN_TOKEN or mint signed sessions: unrelated local web pages/processes
+must not gain Admin access merely by reaching 127.0.0.1.
+
 ## Pair once without typing or storing the Admin token
 
 1. In the operator's **own private interactive terminal**, run
