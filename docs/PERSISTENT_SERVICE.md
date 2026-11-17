@@ -78,6 +78,11 @@ rollback and acceptance. Only after terminal SUCCESS, installed SHA equality,
 active service status and verified STANDARD state does the CLI offer
 independent local operator confirmation to reauthorize the prior YOLO mode.
 
+Only an already authorized **indefinite** YOLO lease uses this automatic
+restore path. A timed lease is rejected before any mode transition, because
+restoring it as indefinite would widen privileges. Machine-readable
+`--json` cannot initiate a YOLO transition.
+
 If the update fails, rolls back, remains pending or the local operator declines
 new root confirmation, the CLI does not silently restore privilege. Incomplete
 acceptance leaves STANDARD for operator inspection. Remote and noninteractive
