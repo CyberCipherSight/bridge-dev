@@ -394,6 +394,35 @@ function cmdWorkspace(args: string[], json = false) {
   process.exitCode = 1;
 }
 
+/**
+ * Re-pair a local browser without exposing the long-lived Admin credential.
+ * A local interactive operator must initiate this action; remote MCP calls,
+ * pipes, and redirected output may never mint or open pairing links.
+ */
+function cmdDashboard(): void {
+  if (getRuntimeMode() !== "portable" || !process.stdin.isTTY || !process.stdout.isTTY) {
+    throw Error("DASHBOARD_LOCAL_TTY_REQUIRED: launch from your own private local terminal");
+  }
+  if (process.platform !== "linux") {
+    throw Error("DASHBOARD_OPENER_UNAVAILABLE: use bridge-dev access from your private terminal");
+  }
+  const admin = process.env.ADMIN_TOKEN || "";
+  const port = process.env.ADMIN_PORT || "3001";
+  if (!/^\\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)
+    throw Error("DASHBOARD_ADMIN_PORT_INVALID");
+  if (admin.length < 32)
+    throw Error("DASHBOARD_ADMIN_CREDENTIAL_MISSING: verify the operator-owned .env");
+  const link = `http://127.0.0.1:${port}/ui/#pair=${mintAdminPairCode(admin)}`;
+  const result = spawnSync("xdg-open", [link], {
+    stdio: "ignore",
+    timeout: 8000,
+  });
+  if (result.error || result.status !== 0)
+    throw Error("DASHBOARD_BROWSER_OPEN_FAILED: use bridge-dev access for a one-use pairing link");
+  console.log("Opened BridgeDev dashboard with a 60-second signed local pairing link.");
+  console.log("No Admin bearer token was printed or stored by the CLI.");
+}
+
 function cmdAccess(): void {
   // Never return credentials to MCP tools, pipes, redirected logs or JSON mode.
   // A user requests them explicitly from a private interactive terminal.
@@ -962,6 +991,7 @@ function cmdHelp() {
   console.log("  status                Show gateway status, mode, sessions, and endpoint");
   console.log("  doctor                Run comprehensive diagnostics on environment health");
   console.log("  access                Display secure connection instructions (interactive only)");
+  console.log("  dashboard             Open locally paired Admin dashboard (Linux local terminal only)");
   console.log("  update [--check]      Install verified latest GitHub main with existing rollback updater");
   console.log("  update notices       Shown during interactive use; cached six hours, never auto-applied");
   console.log("  token status          Inspect protected token configuration, without values");
@@ -1037,6 +1067,9 @@ async function main() {
       break;
     case "access":
       cmdAccess();
+      break;
+    case "dashboard":
+      cmdDashboard();
       break;
     case "update":
       await cmdUpdate(args.slice(1),json);
