@@ -68,12 +68,25 @@ still has to pass exact-SHA CI and guarded update acceptance.
 `bridge-dev update --check` retrieves the current GitHub `main` SHA
 through the operator's authenticated `gh` CLI and reports whether the installed
 release differs, without modifying the service.
-`bridge-dev update` calls the existing `service update <exact-sha>` workflow,
-which checks successful exact-commit CI, verified artifacts/digests, STANDARD
-mode and protected rollback acceptance. It never runs `git pull`, overwrites
-dirty checkouts, changes Funnel, rotates tokens or silently enables YOLO.
-`--no-wait` returns a durable job ID; inspect it before retrying. A service
-restart occurs only as part of the reviewed updater's guarded cutover.
+`bridge-dev update` is the **single-command operator workflow**, accepting
+either STANDARD or an independently signed, active YOLO lease. In YOLO from
+an interactive local terminal it invokes the root-owned operator script to
+revoke authorization to STANDARD before calling the existing
+`service update <exact-sha>` flow. That flow validates exact-commit CI,
+artifact integrity, native and reviewed optional tool inventories, protected
+rollback and acceptance. Only after terminal SUCCESS, installed SHA equality,
+active service status and verified STANDARD state does the CLI offer
+independent local operator confirmation to reauthorize the prior YOLO mode.
+
+If the update fails, rolls back, remains pending or the local operator declines
+new root confirmation, the CLI does not silently restore privilege. Incomplete
+acceptance leaves STANDARD for operator inspection. Remote and noninteractive
+calls cannot initiate YOLO transition. `--no-wait` is available only when
+already STANDARD; it never reactivates privilege asynchronously.
+
+This does not run `git pull`, modify source checkouts, rotate credentials,
+change Funnel, install a new persistent service or weaken systemd sandboxing.
+Only the existing guarded updater controls the service restart at cutover.
 
 ### Optional MCP providers during release acceptance
 
