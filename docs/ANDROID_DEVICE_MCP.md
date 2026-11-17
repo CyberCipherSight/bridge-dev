@@ -6,11 +6,14 @@ is an independent MIT-licensed MCP device router with a Linux/Termux client.
 This guide shows how to connect it without adding Android permissions, a root
 controller, or a mandatory dependency to BridgeDev.
 
-**Status:** Real local Linux-to-Linux MCP interoperability was exercised on Arch
-with BridgeDev's `McpUpstreamManager` and Super Bridge 0.3.1. Seven tools were
-discovered, and a reviewed read-only `bridge_status` call succeeded. The
-Windows-to-WSL2 command path and a live Windows-to-Android session have **not**
-been validated here. Android/Termux is still experimental in BridgeDev itself.
+**Status:** Verified on Arch Linux with BridgeDev's `McpUpstreamManager` and
+Super Bridge 0.3.1. A Redmi K50i (Android 13) was additionally connected to
+Arch via the Super Bridge LAN relay and exercised through BridgeDev's actual
+MCP provider: read-only device listing and file read, an explicitly authorized
+disposable write/read/delete, non-root `id`, duplicate receipt handling and
+root-denial enforcement all passed on 2026-11-17. No existing user files were
+modified. Native Windows-to-WSL2 and physical Windows-to-Android tests have
+**not** been run. Android/Termux remains experimental within BridgeDev itself.
 
 ## Architecture
 
@@ -168,10 +171,27 @@ node scripts/test-superbridge-provider.mjs
 Without those environment variables, this test only validates the two
 disabled-by-default import examples and requires no Super Bridge installation.
 
-The live test uses a disposable local provider configuration, exposes only
-`bridge_status` and `devices_list`, and verifies that an unapproved
+The default live test uses a disposable local provider configuration, exposes
+only `bridge_status` and `devices_list`, and verifies that an unapproved
 `device_exec` call is rejected before the provider is invoked. It does not
 perform writes, root requests, pairing, or Android shell commands.
+
+To additionally exercise the **connected physical device's read-only file API**,
+set `SUPERBRIDGE_REQUIRE_DEVICE=1` in the same command and, if more than one
+client is connected, `SUPERBRIDGE_DEVICE_NAME=<exact-client-name>`. The test
+then requests `device_fs_list` for `.`, polls its durable receipt, and validates
+that the operation completed. It does not print file names or contents and never
+requests writes, command execution or root. A client configured to approve each
+operation must approve this exact read-only request locally.
+
+**Android SELinux caveat:** During one real-device test, an Android client
+launched by `adb su <app-UID>` had the Termux UID but inherited the Magisk
+SELinux domain rather than Termux's normal `untrusted_app` domain. That is
+**not** proof of standard Android app sandboxing. For production usage, launch
+the client normally from the Termux application, not by dropping the UID of a
+root shell. The test also used a temporary ADB reverse tunnel as a diagnostic;
+a separate client later connected directly over LAN. Android root confirmation
+and Windows/WSL2 have not been independently validated through this PR.
 
 ## Troubleshooting and security
 

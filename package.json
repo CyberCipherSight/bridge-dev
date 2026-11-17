@@ -31,7 +31,7 @@
     "test:cli": "tsc && node scripts/isolated-tests.mjs scripts/test-cli-report.mjs scripts/test-bridge-dev-cli.mjs scripts/test-upstream-migration.mjs scripts/test-tailscale.mjs scripts/test-service.mjs",
     "test:portable": "tsc && node scripts/isolated-tests.mjs scripts/test-portable-runtime.mjs",
     "test:portable:server": "node scripts/isolated-tests.mjs scripts/test-portable-server.mjs",
-    "test:extensions": "tsc && node scripts/isolated-tests.mjs scripts/test-provider-router.mjs scripts/test-managed-content.mjs scripts/test-extension-security.mjs scripts/test-network-fixtures.mjs scripts/test-extension-interfaces.mjs scripts/test-upstream-migration.mjs scripts/test-marketplace.mjs scripts/test-marketplace-http.mjs",
+    "test:extensions": "tsc && node scripts/isolated-tests.mjs scripts/test-provider-router.mjs scripts/test-managed-content.mjs scripts/test-extension-security.mjs scripts/test-network-fixtures.mjs scripts/test-extension-interfaces.mjs scripts/test-upstream-migration.mjs scripts/test-marketplace.mjs scripts/test-marketplace-http.mjs && node scripts/test-superbridge-provider.mjs",
     "test:sources": "tsc && node scripts/isolated-tests.mjs scripts/test-source-fixtures.mjs",
     "test:browser": "tsc && node scripts/isolated-tests.mjs scripts/test-admin-browser.mjs",
     "try:local": "node scripts/try-local.mjs",
