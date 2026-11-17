@@ -7,6 +7,16 @@ package installation or provider startup. `extensions_search` offers the same
 metadata to MCP clients. Existing installed entries remain available through
 `extensions_list`, `skills_list` and the Extensions/Skills sections.
 
+The dashboard presents reviewed entries as compact cards. The **Custom** tab
+separately discovers `SKILL.md` directories under the current service account's
+`~/.agents/skills/` directory. This is authenticated, bounded, read-only local
+inventory, not a new public catalog or proof of enabled installation. Local
+paths and host-specific examples are no longer bundled into the portable UI.
+The operator can inspect detected local skills or explicitly prepare an import
+proposal; actual installation and enablement retain the existing review path.
+Marketplace status is displayed beside Refresh in the page toolbar, rather than
+repeating a successful-load banner on every tab. There is no background polling.
+
 ## Verification levels
 
 `profiles/marketplace.v1.json` is a versioned, validated snapshot containing 106

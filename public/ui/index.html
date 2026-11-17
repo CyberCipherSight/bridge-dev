@@ -22,6 +22,7 @@
         <button data-tab="overview" aria-current="page">Overview</button
         ><button data-tab="monitor">Monitor</button
         ><button data-tab="marketplace">Marketplace</button
+        ><button data-tab="custom">Custom</button
         ><button data-tab="extensions">Extensions</button
         ><button data-tab="skills">Skills</button
         ><button data-tab="instructions">Instructions</button
@@ -35,7 +36,8 @@
       <main id="content" tabindex="-1">
         <div class="toolbar">
           <h1 id="title">Overview</h1>
-          <button id="refresh">Refresh</button>
+          <span id="sync-status" class="sync-status" role="status" aria-live="polite">Manual refresh</span>
+          <button id="refresh" type="button">Refresh</button>
         </div>
         <div id="security-panel" hidden>
           <h2>Access & Security</h2>
@@ -60,7 +62,7 @@
         <p id="notice" role="status" aria-live="polite">
           Open the short-lived pairing link printed by bridge-dev access.
         </p>
-        <div class="toolbar">
+        <div class="toolbar" id="section-filter-toolbar">
           <label for="filter">Filter this section</label
           ><input
             id="filter"

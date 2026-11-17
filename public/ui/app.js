@@ -7,6 +7,7 @@ const sections = [
   "overview",
   "monitor",
   "marketplace",
+  "custom",
   "extensions",
   "skills",
   "instructions",
@@ -175,17 +176,21 @@ async function refreshAll() {
     adminSessionReady = true;
     extensions = await api("/api/extensions");
     await render();
-    notice("Loaded. Refresh is manual.");
+    if ($("notice").className === "error" || $("notice").textContent.includes("Open the short-lived pairing link")) notice("");
+    $("sync-status").textContent = "Updated " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + " · manual";
   } catch (e) {
     adminSessionReady = false;
+    $("sync-status").textContent = "Refresh failed";
     showError(e);
   }
 }
 async function navigate(name) {
   stopActivity();
   section = name;
+  notice("");
   $("security-panel").hidden = name !== "security";
   $("title").textContent = name[0].toUpperCase() + name.slice(1);
+  $("filter").closest(".toolbar").hidden = name === "marketplace" || name === "custom";
   $("filter").value = "";
   document.querySelectorAll("nav button").forEach((b) => {
     if (b.dataset.tab === name) b.setAttribute("aria-current", "page");
@@ -200,7 +205,7 @@ function addFlow(kind) {
     chips = el("div", undefined, { class: "chip-row" }),
     chipList = [
       { label: "GitHub Repo", val: "https://github.com/" },
-      { label: "Local Skill / .md", val: "/home/onyx/.agents/skills/" },
+      { label: "Local Skill / .md", val: "" },
       { label: "NPM MCP Server", val: "npm:@modelcontextprotocol/server-" },
     ],
     row = el("div", undefined, { class: "actions" }),
@@ -320,6 +325,7 @@ async function discovered(data, parent, source, scope, kind) {
 async function render() {
   screen.replaceChildren();
   if (section === "marketplace") return marketplaceView();
+  if (section === "custom") return customView();
   if (section === "overview") return overview();
   if (section === "monitor") return monitorPage();
   if (section === "extensions") return providers();
@@ -434,337 +440,45 @@ async function overview() {
     el("p", "From your local terminal: bridge-dev update --check; bridge-dev update. Updating requires STANDARD mode and passes exact-commit CI, artifact integrity, and rollback acceptance."),
   );
 }
-let marketFilterCategory = "all";
-let marketSearchTerm = "";
-
-const SVG_ICONS = {
-  chip: '<path d="M4 4h16v16H4z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M1 9h3 M1 15h3 M20 9h3 M20 15h3"/>',
-  github: '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
-  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
-  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
-  box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
-  brain: '<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-5.04z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-5.04z"/>',
-  keyboard: '<rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="14" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/>',
-  bluetooth: '<polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>',
-  speed: '<path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
-  check: '<polyline points="20 6 9 17 4 12"/>',
-};
-
-function createSvgIcon(name) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  const content = SVG_ICONS[name] || SVG_ICONS.chip;
-  svg.innerHTML = content;
-  return svg;
-}
-
-const MARKETPLACE_CATALOG = [
-  {
-    id: "reverse-engineer-anything",
-    name: "Reverse Engineer Anything (REA)",
-    kind: "skill",
-    category: "reverse-engineering",
-    badge: "Skill & MCP",
-    source: "/home/onyx/.agents/skills/reverse-engineer-anything",
-    github: "https://github.com/morluto/rea",
-    description: "Decompile binaries, reverse engineer Electron and JavaScript apps, inspect Android APKs, and extract firmware artifacts.",
-    tags: ["Reverse Engineering", "Decompiler", "Binary Analysis"],
-    icon: "chip",
-    popular: true,
-  },
-  {
-    id: "github",
-    name: "GitHub Integration",
-    kind: "mcp",
-    category: "developer",
-    badge: "MCP Server",
-    source: "github/github-mcp-server",
-    description: "Search repositories, manage GitHub issues, inspect pull requests, commit histories, and code branches.",
-    tags: ["Git", "GitHub", "Code Review"],
-    icon: "github",
-    popular: true,
-  },
-  {
-    id: "fetch",
-    name: "Fetch & Web Reader",
-    kind: "mcp",
-    category: "web",
-    badge: "MCP Server",
-    source: "npm:@modelcontextprotocol/server-fetch",
-    description: "Fetch web documentation, extract clean Markdown from HTML, and inspect remote API endpoints.",
-    tags: ["Web Scraping", "Markdown", "HTTP"],
-    icon: "globe",
-    popular: true,
-  },
-  {
-    id: "postgres",
-    name: "PostgreSQL Inspector",
-    kind: "mcp",
-    category: "database",
-    badge: "MCP Server",
-    source: "npm:@modelcontextprotocol/server-postgres",
-    description: "Explore PostgreSQL database schemas, inspect table structures, analyze queries, and run authorized SQL.",
-    tags: ["SQL", "Database", "Postgres"],
-    icon: "database",
-    popular: true,
-  },
-  {
-    id: "sqlite",
-    name: "SQLite Database",
-    kind: "mcp",
-    category: "database",
-    badge: "MCP Server",
-    source: "npm:@modelcontextprotocol/server-sqlite",
-    description: "Analyze local SQLite databases, query application tables, and inspect schemas safely.",
-    tags: ["SQLite", "Database", "Local Data"],
-    icon: "database",
-    popular: true,
-  },
-  {
-    id: "docker",
-    name: "Docker Manager",
-    kind: "mcp",
-    category: "developer",
-    badge: "MCP Server",
-    source: "npm:@modelcontextprotocol/server-docker",
-    description: "List Docker containers, inspect container logs, check running images, and manage development stacks.",
-    tags: ["Docker", "Containers", "DevOps"],
-    icon: "box",
-    popular: true,
-  },
-  {
-    id: "memory",
-    name: "Knowledge Memory Graph",
-    kind: "mcp",
-    category: "developer",
-    badge: "MCP Server",
-    source: "npm:@modelcontextprotocol/server-memory",
-    description: "Persistent entity knowledge graph to remember user preferences, architectural rules, and context across sessions.",
-    tags: ["Memory", "Context", "Graph"],
-    icon: "brain",
-    popular: true,
-  },
-  {
-    id: "60pct-keyboard-workflow",
-    name: "60% Ergonomic Workflow",
-    kind: "skill",
-    category: "skills",
-    badge: "Skill",
-    source: "/home/onyx/.agents/skills/60pct-keyboard-workflow",
-    description: "Ergonomic standards, multi-tier layer architecture, and keybinding guidelines for Linux Sway.",
-    tags: ["Ergonomics", "Keyboard", "Sway"],
-    icon: "keyboard",
-    popular: false,
-  },
-  {
-    id: "bluetooth-autoconnect",
-    name: "Bluetooth Audio Manager",
-    kind: "skill",
-    category: "skills",
-    badge: "Skill",
-    source: "/home/onyx/.agents/skills/bluetooth-autoconnect",
-    description: "Audio sink refusal toggle, BlueZ auto-connect semantics, and bt-select TUI workflow.",
-    tags: ["Bluetooth", "Audio", "PipeWire"],
-    icon: "bluetooth",
-    popular: false,
-  },
-  {
-    id: "cachyos-performance",
-    name: "CachyOS Performance & GPU",
-    kind: "skill",
-    category: "skills",
-    badge: "Skill",
-    source: "/home/onyx/.agents/skills/cachyos-performance",
-    description: "Dual-GPU offloading, Btrfs tuning, gaming reliability, and resource-minimal architecture.",
-    tags: ["Linux", "NVIDIA", "Performance"],
-    icon: "speed",
-    popular: false,
-  },
-];
-
-function renderMarketplace(container) {
-  const entries = extensions.entries || [];
-  const providersList = extensions.providers || [];
-
-  const isInstalled = (item) => {
-    return (
-      entries.some((e) => e.component?.id === item.id || e.key?.includes(item.id)) ||
-      providersList.some((p) => p.id === item.id)
-    );
-  };
-
-  const installedCount = MARKETPLACE_CATALOG.filter(isInstalled).length;
-
-  const tabsRow = el("div", undefined, { class: "marketplace-tabs", role: "tablist", "aria-label": "Marketplace categories" });
-  const categories = [
-    { id: "all", label: "All Items" },
-    { id: "popular", label: "Popular" },
-    { id: "reverse-engineering", label: "Reverse Engineering" },
-    { id: "developer", label: "Developer Tools" },
-    { id: "database", label: "Databases" },
-    { id: "web", label: "Web & APIs" },
-    { id: "skills", label: "Skills" },
-    { id: "installed", label: "Installed (" + installedCount + ")" },
-  ];
-
-  for (const cat of categories) {
-    const btn = el("button", cat.label, {
-      class: "market-tab-btn",
-      type: "button",
-      "data-active": String(marketFilterCategory === cat.id),
-      "aria-label": "Filter by " + cat.label,
-    });
-    btn.addEventListener("click", () => {
-      marketFilterCategory = cat.id;
-      container.replaceChildren();
-      renderMarketplace(container);
-    });
-    tabsRow.append(btn);
+async function customView() {
+  const data = await api("/api/custom/resources");
+  const skills = Array.isArray(data.skills) ? data.skills : [];
+  heading("Personal resources");
+  screen.append(el("p", "Local skills discovered from this account's .agents/skills directory. These are not public Marketplace listings, verified installations, or enabled tools. Discovery is read-only."));
+  const summary = el("div", undefined, {class:"catalog-summary"});
+  summary.append(el("strong", skills.length + " local skills found"), el("span", "Only visible to the authenticated local operator"));
+  screen.append(summary);
+  const grid = el("div", undefined, {class:"catalog-grid"});
+  for (const skill of skills) {
+    const registered = (extensions.entries || []).find((entry) => entry.component?.kind === "skill" &&
+      (entry.component.id === skill.id || entry.source === skill.source));
+    const card = el("article", undefined, {class:"catalog-card"});
+    const top = el("div", undefined, {class:"catalog-card-top"});
+    top.append(el("span", "LOCAL SKILL", {class:"catalog-type"}),
+      el("span", registered ? (registered.enabled ? "Enabled" : "Registered") : "Detected only", {class:"catalog-state"}));
+    const title = el("h3", skill.name);
+    const description = el("p", skill.description || "Locally maintained SKILL.md resource", {class:"catalog-description"});
+    const source = el("p", skill.source, {class:"catalog-meta"});
+    const footer = el("div", undefined, {class:"catalog-card-footer"});
+    footer.append(action("Inspect", () => details(skill.name, pre({source:skill.source, registered:!!registered,
+      enabled:registered?.enabled || false, kind:"local skill"}))));
+    if (!registered) footer.append(action("Review import", async () => {
+      const proposal = await api("/api/extensions/discover", {source:skill.source,scope:"user"});
+      details("Import proposal: " + skill.name, pre(proposal),
+        action("Open approvals", () => { $("detail").close(); return navigate("approvals"); }));
+    }));
+    card.append(top, title, description, source, footer);
+    grid.append(card);
   }
-
-  const searchRow = el("div", undefined, { class: "market-toolbar" });
-  const searchInput = el("input", undefined, {
-    class: "market-search",
-    type: "search",
-    placeholder: "Search marketplace (e.g. reverse engineering, github, postgres)...",
-    "aria-label": "Search marketplace",
-    value: marketSearchTerm,
-  });
-  searchInput.addEventListener("input", (e) => {
-    marketSearchTerm = e.target.value.toLowerCase().trim();
-    updateGrid();
-  });
-  searchRow.append(searchInput);
-
-  const grid = el("div", undefined, { class: "marketplace-grid" });
-
-  function updateGrid() {
-    grid.replaceChildren();
-    const filtered = MARKETPLACE_CATALOG.filter((item) => {
-      const installed = isInstalled(item);
-      if (marketFilterCategory === "popular" && !item.popular) return false;
-      if (marketFilterCategory === "installed" && !installed) return false;
-      if (
-        marketFilterCategory !== "all" &&
-        marketFilterCategory !== "popular" &&
-        marketFilterCategory !== "installed" &&
-        item.category !== marketFilterCategory
-      )
-        return false;
-      if (marketSearchTerm) {
-        const text = (item.name + " " + item.description + " " + item.tags.join(" ")).toLowerCase();
-        if (!text.includes(marketSearchTerm)) return false;
-      }
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      grid.append(el("p", "No extensions match your filter.", { class: "empty" }));
-      return;
-    }
-
-    for (const item of filtered) {
-      const installed = isInstalled(item);
-      const card = el("div", undefined, { class: "market-card" });
-
-      const header = el("div", undefined, { class: "market-card-header" });
-      const iconWrap = el("div", undefined, { class: "market-card-icon" });
-      iconWrap.append(createSvgIcon(item.icon));
-
-      const info = el("div", undefined, { class: "market-card-info" });
-      const titleRow = el("div", undefined, { class: "market-card-title" });
-      titleRow.append(el("span", item.name));
-
-      const badgeClass =
-        item.badge.includes("Skill") && item.badge.includes("MCP")
-          ? "badge-both"
-          : item.badge.includes("Skill")
-            ? "badge-skill"
-            : "badge-mcp";
-      titleRow.append(el("span", item.badge, { class: "market-badge " + badgeClass }));
-      info.append(titleRow);
-
-      const desc = el("p", item.description, { class: "market-card-desc" });
-      info.append(desc);
-
-      const tagsRow = el("div", undefined, { class: "market-tags" });
-      for (const t of item.tags) tagsRow.append(el("span", "#" + t, { class: "market-tag" }));
-      info.append(tagsRow);
-
-      header.append(iconWrap, info);
-
-      const footer = el("div", undefined, { class: "market-card-footer" });
-      if (installed) {
-        const statusEl = el("span", undefined, { class: "market-status-installed" });
-        statusEl.append(createSvgIcon("check"), document.createTextNode(" Installed"));
-        const inspectBtn = el("button", "Inspect", {
-          class: "market-action-btn",
-          type: "button",
-          "aria-label": "Inspect " + item.name,
-        });
-        inspectBtn.addEventListener("click", () => {
-          const entry = entries.find((e) => e.component?.id === item.id || e.key?.includes(item.id));
-          const prov = providersList.find((p) => p.id === item.id);
-          if (prov) providerDetails(prov);
-          else if (entry) {
-            const content = el("div");
-            pairs({ Source: entry.source, Scope: entry.scope, Resolved: entry.resolved, Digest: entry.digest }, content);
-            details(entry.key, content);
-          }
-        });
-        footer.append(statusEl, inspectBtn);
-      } else {
-        const statusEl = el("span", item.kind === "skill" ? "Ready to add" : "MCP Service", {
-          class: "muted market-ready-label",
-        });
-        const installBtn = el("button", "Install", {
-          class: "market-action-btn btn-install",
-          type: "button",
-          "aria-label": "Install " + item.name,
-        });
-        installBtn.addEventListener("click", async () => {
-          if (!confirm("Install " + item.name + " into your workspace?")) return;
-          installBtn.disabled = true;
-          installBtn.textContent = "Installing...";
-          try {
-            const proposal = await api("/api/extensions/discover", { source: item.source, scope: "project" });
-            if (proposal.id) {
-              await api("/api/extensions/apply", { id: proposal.id });
-              if (item.kind === "skill") {
-                try {
-                  const enableProp = await api("/api/extensions/action", {
-                    action: "enable",
-                    key: "skill:" + item.id,
-                    scope: "project",
-                  });
-                  if (enableProp.id) await api("/api/extensions/apply", { id: enableProp.id });
-                } catch {}
-              }
-              notice("Installed " + item.name + " successfully.");
-              await refreshAll();
-            }
-          } catch (err) {
-            notice("Installation failed: " + err.message);
-            installBtn.disabled = false;
-            installBtn.textContent = "Install";
-          }
-        });
-        footer.append(statusEl, installBtn);
-      }
-
-      card.append(header, footer);
-      grid.append(card);
-    }
-  }
-
-  updateGrid();
-  container.append(tabsRow, searchRow, grid);
+  if (!skills.length) grid.append(el("p", "No local SKILL.md directories found. You can still add sources manually below.", {class:"empty"}));
+  screen.append(grid);
+  heading("Add your own resource");
+  addFlow("skill");
 }
 
 async function providers() {
   heading("Extensions Store & MCP Providers");
-  renderMarketplace(screen);
+  screen.append(el("p", "Browse the portable, reviewed catalog in Marketplace. Personal-machine skills belong in Custom."), controls(action("Browse Marketplace", () => navigate("marketplace")), action("Open Custom", () => navigate("custom"))));
   heading("Custom GitHub Repo, Local Skill, or NPM MCP Server");
   addFlow("mcp");
   heading("Configured Providers & Upstreams");
@@ -1709,7 +1423,7 @@ async function marketplaceView() {
   screen.append(
     action("Client integration preferences", globalIntegrationPreferences),
   );
-  screen.append(el("p", data.verification), el("p", data.inventory_source));
+  screen.append(el("p", "Explore reviewed MCP servers, skills and tools. Catalog entries are not proof of installation or compatibility; inspect the requirements before requesting a proposal.", {class:"catalog-intro"}));
   const form = el("form", undefined, {
     class: "actions",
     id: "marketplace-filter",
@@ -1753,45 +1467,31 @@ async function marketplaceView() {
     await render();
   });
   screen.append(form);
-  table(
-    [
-      "Name",
-      "Type",
-      "Category",
-      "Version",
-      "State",
-      "ChatGPT alternative",
-      "Recommendation",
-      "Related guidance",
-      "Details",
-    ],
-    data.entries.map((entry) => [
-      entry.name,
-      entry.type,
-      entry.category,
-      entry.version,
-      entry.state.connected
-        ? "Connected; " + entry.state.exposed.length + " exposed"
-        : entry.state.registered
-          ? "Registered; " + (entry.state.enabled ? "enabled" : "disabled")
-          : entry.state.installed
-            ? "Installed"
-            : "Available; requirements unverified",
-      entry.native_alternative
-        ? entry.native_alternative.service +
-          " / " +
-          entry.state.native_availability
-        : "Not established",
-      (entry.state.duplicate_warning ? "Duplicate warning: " : "") +
-        entry.recommendation.provider,
-      entry.state.related_skills
-        ?.filter((s) => s.installed)
-        .map((s) => s.name + " (" + (s.enabled ? "enabled" : "disabled") + ")")
-        .join(", ") || "none",
-      action("Details", () => marketplaceDetails(entry)),
-    ]),
-    "Marketplace",
-  );
+  const summary = el("div", undefined, {class:"catalog-summary"});
+  summary.append(el("strong", data.total + " matching resources"),
+    el("span", data.catalog_total + " in reviewed catalog · metadata only · no automatic installation"));
+  screen.append(summary);
+  const grid = el("div", undefined, {class:"catalog-grid"});
+  for (const entry of data.entries) {
+    const card = el("article", undefined, {class:"catalog-card"});
+    const top = el("div", undefined, {class:"catalog-card-top"});
+    const status = entry.state.connected ? "Connected · " + entry.state.exposed.length + " tools" :
+      entry.state.registered ? (entry.state.enabled ? "Enabled" : "Registered") :
+      entry.state.installed ? "Installed" : "Not installed";
+    top.append(el("span", entry.type.toUpperCase(), {class:"catalog-type"}),
+      el("span", status, {class:"catalog-state"}));
+    card.append(top, el("h3", entry.name), el("p", entry.description, {class:"catalog-description"}));
+    const meta = el("p", entry.category + " · " + entry.maintainer + " · " + entry.version,
+      {class:"catalog-meta"});
+    card.append(meta);
+    const footer = el("div", undefined, {class:"catalog-card-footer"});
+    footer.append(el("span", "Source checked " + entry.verified_at, {class:"catalog-verified"}),
+      action("Details", () => marketplaceDetails(entry)));
+    card.append(footer);
+    grid.append(card);
+  }
+  if (!data.entries.length) grid.append(el("p", "No resources match this search. Clear filters to browse the catalog.", {class:"empty"}));
+  screen.append(grid);
   screen.append(
     el(
       "p",

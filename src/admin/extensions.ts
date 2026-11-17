@@ -9,12 +9,14 @@ import {getPolicyGate} from "../lib/policy-gateway.js";
 import {redactAudit} from "../lib/hash-audit.js";
 import {sha256} from "../lib/extension-sources.js";
 import {marketplace,loadMarketplace} from "../lib/marketplace.js";
+import {listLocalSkills} from "../lib/custom-resources.js";
 import {readIntegrationPreferences,saveIntegrationPreference,integrationPreference,resolveIntegration} from "../lib/integration-preferences.js";
 export function extensionRouter(manager:McpUpstreamManager):Router{
  const router=Router(),store=new ExtensionStore(undefined,undefined,manager);
  const scope=z.enum(["user","project"]).default("project");
  const run=(handler:(req:any)=>Promise<unknown>)=>async(req:any,res:any)=>{try{res.json({ok:true,data:redactAudit(await handler(req))});}catch(error){res.status(400).json({ok:false,error:String(redactAudit(String(error)))});}};
  router.get("/api/marketplace",run(req=>marketplace(manager,req.query)));
+ router.get("/api/custom/resources",run(()=>listLocalSkills()));
  router.get("/api/marketplace/preferences",run(()=>readIntegrationPreferences()));
  router.post("/api/marketplace/preferences",run(async req=>{
   const value=integrationPreference.parse(req.body);

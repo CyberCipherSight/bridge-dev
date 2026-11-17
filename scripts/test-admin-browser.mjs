@@ -297,7 +297,7 @@ try {
   await evaluate('document.getElementById("marketplace-search").value="Reverse Engineer Anything";document.getElementById("marketplace-filter").requestSubmit()');
   await waitFor(()=>evaluate('marketData.total===1'));
   assert.equal(await evaluate('marketData.entries[0].state.registered'),false);
-  await evaluate('[...screen.querySelectorAll("tbody button")].find(b=>b.textContent==="Details").click()');
+  await evaluate('[...screen.querySelectorAll(".catalog-card button")].find(b=>b.textContent==="Details").click()');
   await waitFor(()=>evaluate('document.getElementById("detail").open'));
   assert.equal(await evaluate(`document.querySelector('[aria-label="Preferred Provider"]').value`),'auto');
   assert.equal(await evaluate(`document.querySelector('[aria-label="Declared ChatGPT availability"]').value`),'unknown');
@@ -307,6 +307,10 @@ try {
   await waitFor(()=>evaluate(`document.querySelector('[aria-label="Integration service"]')!==null`));
   assert.equal(await evaluate(`document.querySelector('[aria-label="Declared ChatGPT availability"]').value`),'unknown');
   await evaluate('document.getElementById("detail").close()');
+  await evaluate('navigate("custom")');
+  await waitFor(() => evaluate('screen.textContent.includes("Personal resources")'));
+  assert.equal(await evaluate('document.getElementById("notice").textContent.includes("Loaded. Refresh is manual.")'),false);
+  assert.equal(await evaluate('document.getElementById("section-filter-toolbar").hidden'),true);
   const names = [
     "overview",
     "marketplace",

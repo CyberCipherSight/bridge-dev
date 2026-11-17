@@ -36,7 +36,7 @@
     "try:local": "node scripts/try-local.mjs",
     "test:trial": "node scripts/test-try-local.mjs",
     "test:service": "tsc && node scripts/isolated-tests.mjs scripts/test-service.mjs",
-    "test:marketplace": "tsc && node scripts/isolated-tests.mjs scripts/test-marketplace.mjs scripts/test-marketplace-http.mjs"
+    "test:marketplace": "tsc && node scripts/isolated-tests.mjs scripts/test-marketplace.mjs scripts/test-marketplace-http.mjs scripts/test-custom-resources.mjs"
   },
   "keywords": [
     "mcp",
