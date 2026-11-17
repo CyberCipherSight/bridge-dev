@@ -43,7 +43,7 @@ Source regression: `scripts/test-managed-yolo-proxy-permissions.mjs` checks
 STRICT/STANDARD isolation, signed-mode classification semantics, static policy
 precedence, unknown-default-X, and immediate removal of dynamic permissions.
 The independent host-controller suite tests signed lease and revocation, while
-the separate REA fixture proves discovery of all 190 schema-valid methods.
+the separate REA fixture proves discovery of the current schema-valid methods.
 
 Do not assume that application-level checks alone protect the host. Shell and upstream code may be indirect execution channels. Linux UID separation, filesystem permissions, namespace restrictions and operator independence remain essential.
 

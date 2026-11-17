@@ -34,12 +34,31 @@ Frida, Android tools or other optional engines are installed automatically.
 
 ## Verified isolated acceptance
 
-The installed 6.9.0 server advertised **255** tools, rather than the older skill's
-207. With its compact output profile, BridgeDev accepted **190** schemas and
-refused **65** under existing regex, schema-depth and metadata limits. Bounded,
-finite local definition references now work; remote/dynamic references,
-recursive expansion and untrusted regex remain refused. Unsupported tools are
-reported in the provider detail; they are never described as callable.
+The installed 6.9.0 server advertises **255 tools** (not the older skill's 207).
+The previous gateway's blanket regex refusal accepted 190 and rejected 65:
+60 tools contained a JSON Schema regex `pattern` keyword and five had a plain
+input property **named** `pattern`, mistakenly treated as a keyword.
+
+The repaired validator now admits **249 tools**. It compiles only anchored,
+bounded, conservative ECMAScript-Unicode expressions with no lookarounds,
+backreferences, ambiguous repeated groups or more than one variable-width
+quantifier. Original input and output `pattern`, type, required, enum and bounds
+remain enforced by Ajv. All 19 distinct REA expressions compiled in both
+JavaScript Unicode and non-Unicode mode; no Python regex translation was needed.
+Bounded finite local references remain supported; remote/dynamic references,
+recursive expansion and unsafe regex expressions remain refused.
+
+The final six rejections are intentional:
+
+| Cause | Count | Tool names |
+| --- | ---: | --- |
+| Regex exceeds conservative complexity bound | 2 | `trace_dylib_resolution`, `capture_process_scenario` |
+| Nested variable-width repetition | 4 | `inspect_adb_package`, `uninstall_adb_package`, `start_adb_app`, `stop_adb_app` |
+
+This is a **63-tool net improvement** in validated inventory (190 → 249).
+No regex constraints were deleted and no relaxation was automatically approved.
+Those six can only be added after a separate, reviewable safety design; a valid
+JavaScript regex is not by itself evidence of linear-time evaluation.
 
 An independent HTTP MCP SDK client discovered and invoked these three explicitly
 allowlisted read-only tools, with SDK output-schema validation enabled:
@@ -52,13 +71,14 @@ Other accepted schemas are not execution approval. Native analysis requiring
 additional engines remains unverified. ChatGPT account-side discovery/invocation
 requires the operator's reconnect and account acceptance.
 
-**Full compatible tool exposure:** `bridge-dev mcp enable rea` now prepares an
-operator-review proposal for all 190 currently schema-valid REA 6.9.0 tools.
+**Full compatible tool exposure:** `bridge-dev mcp enable rea` prepares an
+operator-review proposal for all 249 currently schema-valid REA 6.9.0 tools,
+once the new release is installed and the provider has been retested.
 It pins the exact names, preserves previously reviewed R/W/X classes, and assigns
 X (approval required) to newly selected names. Once independently approved,
 the selection persists across restarts. A provider version with new tools needs
-a fresh review. All 65 rejected REA tools contained untrusted regex `pattern`
-constraints; the gateway does not disable validation to expose them.
+a fresh review. Earlier 190-tool proposals do **not** automatically acquire the
+newly compatible tools; replace the proposal with a reviewed fresh snapshot.
 
 An optional real REA test without installation or production changes is:
 
@@ -66,7 +86,8 @@ An optional real REA test without installation or production changes is:
 node scripts/test-rea-full-provider.mjs /absolute/reviewed/rea-agents/scripts/rea.mjs
 ```
 
-It independently verified 190 proxies plus 52 native tools, a successful
+The updated isolated acceptance verifies 249 proxies plus 52 native tools,
+a successful
 guidance call, and denial of an unapproved executable-class tool. It does not
 establish that all optional binary-analysis engines are installed or that the
 ChatGPT account has refreshed and accepted the full new inventory.
@@ -88,12 +109,13 @@ The harness uses random ports, disposable credentials, HOME/XDG/state/workspace
 and operator-reviewed local executables. Package acquisition is a separate,
 explicit operator action; tests never fetch packages or analysis engines.
 
-## Managed YOLO and the 190-tool selection
+## Managed YOLO and the reviewed REA selection
 
 With the independently signed YOLO lease active, BridgeDev now honors R/W/X
-classifications from enabled, operator-reviewed MCP providers. The REA proposal
-pins **190 schema-valid tool names**. The prior 3 guidance methods retain R;
-the other 187 default to X. The signed mode permits use of that approved tool
+classifications from enabled, operator-reviewed MCP providers. The original
+proposal pins 190 names; a newly reviewed proposal can pin up to 249 after this
+release. The prior three guidance methods retain R; other tools default to X.
+The signed mode permits use of that approved tool
 selection without reauthorizing each tool name, but does **not** elevate REA's
 OS process to root or install missing analysis engines.
 

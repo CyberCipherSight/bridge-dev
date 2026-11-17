@@ -12,6 +12,7 @@ import {
   inspectProviderTools,
   resolveLocalSchema,
   validateToolArguments,
+  sanitizeProviderResult,
 } from "../dist/lib/provider-security.js";
 const start = performance.now(),
   catalog = await loadMarketplace();
@@ -200,8 +201,35 @@ const partition = inspectProviderTools([
 assert.equal(partition.tools.length, 1);
 assert.equal(
   partition.rejected[0].reason,
-  "PROVIDER_SCHEMA_UNSUPPORTED: pattern",
+  "PROVIDER_SCHEMA_PATTERN_UNSAFE",
 );
+assert.equal(partition.rejected[0].path,"#/properties/value/pattern");
+// Distinguish a field literally named "pattern" from the JSON Schema
+// regex keyword; validate both tool input and structured output at runtime.
+const acceptedPatterns=inspectProviderTools([{
+  name:"pattern_fixture",
+  inputSchema:{type:"object",properties:{
+    pattern:{type:"string"},
+    code:{type:"string",pattern:"^[A-Z0-9]{3,7}$"},
+  },required:["code"]},
+  outputSchema:{type:"object",properties:{hash:{type:"string",pattern:"^[a-f0-9]{64}$"}},required:["hash"]},
+}]);
+assert.equal(acceptedPatterns.tools.length,1);
+validateToolArguments(acceptedPatterns.tools[0],{pattern:"plain field",code:"ABC12"});
+assert.throws(()=>validateToolArguments(acceptedPatterns.tools[0],{code:"not valid"}),/PROVIDER_INVALID_ARGUMENTS/);
+assert.throws(()=>sanitizeProviderResult({content:[{type:"text",text:"ok"}],structuredContent:{hash:"wrong"}},
+  "fixture",acceptedPatterns.tools[0]),/PROVIDER_INVALID_OUTPUT/);
+assert.equal(sanitizeProviderResult({content:[{type:"text",text:"ok"}],structuredContent:{hash:"a".repeat(64)}},
+  "fixture",acceptedPatterns.tools[0]).isError,undefined);
+for(const expression of [
+  "^(a+)+$", "^(a|aa)+$", "^a*a*a*$", "^a?a?a?a?a?a?a?a?a?a?$",
+  "^(?=a)a$", "^\\p{L}+$", "^\\_$", "^a{0,9000}$", "^"+"a".repeat(180)+"$",
+  "^(a|aa){20}$", "^(a|a)(a|a)(a|a)(a|a)$", "^(?:a{256}){256}$",
+]){
+  const denied=inspectProviderTools([{name:"unsafe_regex",inputSchema:{type:"object",properties:{value:{type:"string",pattern:expression}}}}]);
+  assert.equal(denied.tools.length,0,"Unsafe pattern must not be admitted: "+expression);
+  assert.match(denied.rejected[0].reason,/PROVIDER_SCHEMA_PATTERN_(?:UNSAFE|COMPLEX|INVALID)/);
+}
 assert.throws(() => inspectProviderTools([tool, tool]), /INVALID_TOOL_NAME/);
 const { McpUpstreamManager } =
   await import("../dist/lib/mcp-upstream-manager.js");

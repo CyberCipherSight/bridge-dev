@@ -53,7 +53,13 @@ async function startGateway() {
 try {
   const advertised=await connectProvider();
   const inspected=inspectProviderTools(advertised);
-  assert.ok(inspected.tools.length>=100,"REA version unexpectedly changed or inventory incomplete");
+  assert.equal(advertised.length,255,"REA 6.9.0 advertised tool count changed; re-review required");
+  assert.equal(inspected.tools.length,249,"REA schema admission changed; review guard and rejected reasons");
+  assert.deepEqual(Object.fromEntries([...new Set(inspected.rejected.map(x=>x.reason))].map(reason=>
+    [reason,inspected.rejected.filter(x=>x.reason===reason).length])),{
+      PROVIDER_SCHEMA_PATTERN_COMPLEX:2,
+      PROVIDER_SCHEMA_PATTERN_UNSAFE:4,
+  });
   const names=inspected.tools.map(t=>t.name);
   if(process.argv.includes('--diagnose-patterns')){
     const failedNames=new Set(inspected.rejected.map(t=>t.name));
@@ -103,6 +109,7 @@ try {
   console.log(JSON.stringify({result:"PASS",advertised:advertised.length,compatible:names.length,
     rejected:inspected.rejected.length,proxied:names.length,
     gatewayTools:list.length,guideInvoked:true,unapprovedXDenied:true,
+    rejectedNames:inspected.rejected.map(({name,reason,path})=>({name,reason,path})),
     rejectedReasons:Object.fromEntries([...new Set(inspected.rejected.map(x=>x.reason))].map(reason=>
       [reason,inspected.rejected.filter(x=>x.reason===reason).length]))},null,2));
 }finally{

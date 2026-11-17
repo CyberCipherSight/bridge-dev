@@ -17,6 +17,15 @@ to the approved snapshot, persisted across restarts, and new names await review.
 Unclassified tools use the conservative X permission class; neither an MCP
 annotation nor an imported schema can silently grant R/W privileges. Operator
 confirmation and managed-system policy rules are unchanged.
+Upstream JSON Schemas are not automatically trusted. BridgeDev accepts only a
+conservative, anchored and structurally bounded subset of JavaScript Unicode
+regex `pattern` constraints, and enforces accepted patterns on both arguments
+and structured outputs. Unsafe, excessively complex or invalid patterns remain
+rejected with a tool-specific reason and schema path. A schema property simply
+*named* `pattern` is not interpreted as a regex constraint. No global regex
+relaxation, stripped constraint or automatic permission grant is available.
+Large inventories can consume client tool/context budgets; select a smaller
+allowlist using `--tools` when a full provider is unnecessary.
 `bridge-dev approve <id>` applies it through the authenticated operator API. The CLI
 reads `.env` in its current directory; use the same directory/configuration as serve.
 `--json` returns structured data, and `--verbose` shows complete file previews.

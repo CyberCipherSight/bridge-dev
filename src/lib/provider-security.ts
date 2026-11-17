@@ -10,12 +10,139 @@ export function proxyToolName(provider:string,tool:string):string{
   if(safe.length<=64 && raw===safe)return safe;
   return safe.slice(0,51)+"_"+createHash("sha256").update(raw).digest("hex").slice(0,12);
 }
-function checkSchema(schema:unknown,depth=0):void{
+/**
+ * Permit only bounded, structurally simple ECMAScript patterns. JavaScript's
+ * backtracking regex engine has no execution timeout: never compile arbitrary
+ * provider expressions merely because they parse. In particular a quantified
+ * group with inner repetition or alternatives can be super-linear.
+ *
+ * A pattern not covered by this conservative grammar stays unavailable; we
+ * never delete the pattern keyword or turn off Ajv input/output validation.
+ */
+function checkPattern(value:unknown):void{
+  if(typeof value!=="string")throw Error("PROVIDER_SCHEMA_PATTERN_INVALID");
+  if(value.length>170)throw Error("PROVIDER_SCHEMA_PATTERN_COMPLEX");
+  if(!value.startsWith("^"))throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+  const groups:{repeated:boolean;alternatives:boolean;hasQuantifier:boolean}[]=[];
+  let lastGroup:{repeated:boolean;alternatives:boolean;hasQuantifier:boolean}|undefined;
+  let lastAtom=""; // group, character-class, literal
+  let consecutiveVariable=0;
+  let variableQuantifiers=0;
+  let alternatives=0;
+  let groupCount=0;
+  for(let i=0;i<value.length;i++){
+    const ch=value[i];
+    if(ch==="\\"){
+      const escape=value[++i];
+      if(!escape||/[1-9kKpP]/.test(escape))throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      if(escape==="x"||escape==="u"){
+        const digits=escape==="x"?2:4;
+        if(!new RegExp("^[a-fA-F0-9]{"+digits+"}$").test(value.slice(i+1,i+1+digits)))
+          throw Error("PROVIDER_SCHEMA_PATTERN_INVALID");
+        i+=digits;
+      }
+      lastAtom="literal";
+      continue;
+    }
+    if(ch==="["){
+      let found=false;
+      for(i++;i<value.length;i++){
+        if(value[i]==="\\"){i++;continue;}
+        if(value[i]==="]"){found=true;break;}
+      }
+      if(!found)throw Error("PROVIDER_SCHEMA_PATTERN_INVALID");
+      lastAtom="class";
+      continue;
+    }
+    if(ch==="("){
+      if(++groupCount>4||groups.length>=3)throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      if(value[i+1]==="?"){
+        if(value[i+2]!==":")throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+        i+=2;
+      }
+      groups.push({repeated:false,alternatives:false,hasQuantifier:false});
+      lastAtom="";
+      consecutiveVariable=0;
+      continue;
+    }
+    if(ch===")"){
+      lastGroup=groups.pop();
+      if(!lastGroup)throw Error("PROVIDER_SCHEMA_PATTERN_INVALID");
+      if(lastGroup.repeated&&groups.length)groups[groups.length-1].repeated=true;
+      if(lastGroup.hasQuantifier&&groups.length)groups[groups.length-1].hasQuantifier=true;
+      lastAtom="group";
+      continue;
+    }
+    if(ch==="|"){
+      if(++alternatives>2)throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      if(groups.length)groups[groups.length-1].alternatives=true;
+      consecutiveVariable=0;
+      lastAtom="";
+      continue;
+    }
+    if(ch==="*"||ch==="+"||ch==="?"||ch==="{"){
+      if(!lastAtom)throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      if(ch==="{"){
+        const match=/^\{\d{1,4}(?:,\d{0,4})?\}/.exec(value.slice(i));
+        if(!match)throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+        i+=match[0].length-1;
+        if(lastAtom==="group" && lastGroup && (lastGroup.hasQuantifier||lastGroup.alternatives))
+          throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+        // Finite fixed-width repeats are deterministic in supported patterns.
+        if(!match[0].includes(",") && Number(match[0].slice(1,-1))<=256){
+          if(groups.length)groups[groups.length-1].hasQuantifier=true;
+          lastAtom="";
+          consecutiveVariable=0;
+          continue;
+        }
+        const bounds=match[0].slice(1,-1).split(",");
+        if(bounds.length!==2||bounds[1]===""||Number(bounds[1])>256||Number(bounds[0])>Number(bounds[1]))
+          throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      }
+      if(lastAtom==="group" && lastGroup && (lastGroup.hasQuantifier||lastGroup.alternatives))
+        throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      // More than one variable-width repetition can have polynomial or
+      // exponential backtracking even without nested groups (e.g. a*a*a*).
+      if(++variableQuantifiers>1)throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      if(++consecutiveVariable>1)throw Error("PROVIDER_SCHEMA_PATTERN_UNSAFE");
+      if(groups.length){
+        groups[groups.length-1].repeated=true;
+        groups[groups.length-1].hasQuantifier=true;
+      }
+      lastAtom="";
+      continue;
+    }
+    if(ch!=="^"&&ch!=="$"){
+      lastAtom="literal";
+      consecutiveVariable=0;
+    }
+  }
+  if(groups.length)throw Error("PROVIDER_SCHEMA_PATTERN_INVALID");
+  try{new RegExp(value,"u");}
+  catch{throw Error("PROVIDER_SCHEMA_PATTERN_INVALID");}
+}
+function checkSchema(schema:unknown,depth=0,location="#"):void{
   if(depth>16)throw new Error("PROVIDER_SCHEMA_DEPTH_LIMIT");
-  if(schema && typeof schema==="object")for(const [key,value]of Object.entries(schema)){
-    // Refuse remote references and regex execution from untrusted schemas.
-    if(["$ref","$dynamicRef","pattern","patternProperties","__proto__","constructor","prototype"].includes(key))throw new Error("PROVIDER_SCHEMA_UNSUPPORTED: "+key);
-    checkSchema(value,depth+1);
+  if(!schema||typeof schema!=="object")return;
+  for(const [key,value]of Object.entries(schema)){
+    const at=location+"/"+key.replace(/~/g,"~0").replace(/\//g,"~1");
+    if(["$ref","$dynamicRef","patternProperties","__proto__","constructor","prototype"].includes(key))
+      throw new Error("PROVIDER_SCHEMA_UNSUPPORTED: "+key);
+    if(key==="pattern"){
+      try{checkPattern(value);}catch(error){throw Error((error as Error).message+" @"+at);}
+      continue;
+    }
+    // Under properties the keys are *field names*, not JSON Schema keywords.
+    // A field literally named "pattern" must not trigger regex rejection.
+    if(key==="properties" && value && typeof value==="object" && !Array.isArray(value)){
+      for(const [field,definition] of Object.entries(value)){
+        if(["__proto__","constructor","prototype"].includes(field))
+          throw Error("PROVIDER_SCHEMA_UNSUPPORTED: "+field);
+        checkSchema(definition,depth+2,at+"/"+field.replace(/~/g,"~0").replace(/\//g,"~1"));
+      }
+      continue;
+    }
+    checkSchema(value,depth+1,at);
   }
 }
 /** Expand finite document-local refs only. No network, dynamic refs or recursive expansion. */
@@ -49,9 +176,9 @@ export function resolveLocalSchema(schema:any):any{
  if(Buffer.byteLength(JSON.stringify(expanded))>65536)throw Error("PROVIDER_SCHEMA_EXPANSION_LIMIT");
  return expanded;
 }
-export function inspectProviderTools(tools:Tool[]):{tools:Tool[];rejected:{name:string;reason:string}[]}{
+export function inspectProviderTools(tools:Tool[]):{tools:Tool[];rejected:{name:string;reason:string;path?:string}[]}{
  if(tools.length>256)throw Error("PROVIDER_TOOL_COUNT_LIMIT");
- const names=new Set<string>(),accepted:Tool[]=[],rejected:{name:string;reason:string}[]=[];
+ const names=new Set<string>(),accepted:Tool[]=[],rejected:{name:string;reason:string;path?:string}[]=[];
  for(const tool of tools){
   if(typeof tool.name!=="string"||!tool.name.length||tool.name.length>256||names.has(tool.name))throw Error("PROVIDER_INVALID_TOOL_NAME");
   names.add(tool.name);
@@ -61,8 +188,10 @@ export function inspectProviderTools(tools:Tool[]):{tools:Tool[];rejected:{name:
    validateToolMetadata([normalized]);accepted.push(normalized);
   }catch(error){
    // Never echo schema contents, expressions or descriptions into diagnostics.
-   const reason=String((error as Error).message).match(/^PROVIDER_[A-Z_]+(?:: [a-zA-Z$ _-]+)?/)?.[0]||"PROVIDER_SCHEMA_INVALID";
-   rejected.push({name:cleanProviderText(tool.name,256),reason});
+   const message=String((error as Error).message);
+   const reason=message.match(/^PROVIDER_[A-Z_]+(?:: [a-zA-Z$ _-]+)?/)?.[0]||"PROVIDER_SCHEMA_INVALID";
+   const schemaPath=message.match(/ @(#(?:\/[A-Za-z0-9_~.-]+)+)$/)?.[1];
+   rejected.push({name:cleanProviderText(tool.name,256),reason,...(schemaPath?{path:schemaPath}:{})});
   }
  }
  return {tools:accepted,rejected};

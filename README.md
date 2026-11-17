@@ -155,15 +155,12 @@ The Marketplace contains **106 reviewed catalog entries** (metadata, not
 installed tools). The separate **Custom** view discovers the current operator's
 local skills without publishing host-specific paths in the portable catalog.
 
-For example, a reviewed [Reverse Engineer Anything (REA)](docs/integrations/REA.md)
-installation has been observed as connected. REA 6.9.0 advertised 255 tool
-definitions; BridgeDev accepted 190 schemas and rejected 65. The previously
-installed configuration exposed just three read-only guidance tools, but an
-isolated gateway successfully exposed and tested **all 190 compatible tools**.
-Production expansion still requires independent operator approval. **This does
-not yet prove that an EXE or APK has been
-decompiled**: binary analysis requires a reviewed engine/session and explicit
-tool permissions. Details and a reproducible test are in the [REA guide](docs/integrations/REA.md).
+For example, [Reverse Engineer Anything (REA)](docs/integrations/REA.md) is
+supported as an optional reviewed MCP provider. Its large tool inventory can be
+tested and selectively approved without installing new analysis engines.
+Schema compatibility does **not** prove that an EXE or APK was decompiled:
+real binary analysis still needs the appropriate engine, sample and permissions.
+See the [REA verification record](docs/integrations/REA.md) for current counts.
 
 ## Security: usable by default, powerful only on purpose
 
