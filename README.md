@@ -117,6 +117,26 @@ tab displays the verified policy mode from the authenticated gateway (STANDARD
 or dangerous), never from the last local `bridge-dev mode` output. Root
 authorization is only controlled through independent local operator approval.
 
+## Local dashboard recovery without typing an Admin token
+
+After Admin-token rotation or an expired seven-day browser session, a bare
+visit to `http://127.0.0.1:3001/ui/` is unauthenticated. The dashboard now
+opens **Access & Security** with a recovery instruction instead of showing
+a blank “Invalid admin token” screen. This is **not a gateway outage** and
+does not warrant credential rotation or a service restart.
+
+On Linux, run `bridge-dev dashboard` in your **own private interactive
+terminal**. It uses the current protected operator configuration to launch
+the normal browser with a 60-second, one-use signed pairing fragment. The
+fragment is removed from the address bar immediately by the dashboard, and
+the persistent Admin bearer is never displayed. The CLI refuses non-TTY
+and remote execution. On an older release, `bridge-dev access` and open its
+one-time pairing link instead.
+
+No unauthenticated localhost endpoint can reveal or mint the Admin bearer,
+and the dashboard cannot independently initiate privileged pairing merely
+because somebody browses to 127.0.0.1.
+
 ## Local Admin dashboard: one-click pairing
 
 Use `bridge-dev access` in a **private interactive terminal** to obtain the
