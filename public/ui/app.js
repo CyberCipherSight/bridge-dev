@@ -632,6 +632,7 @@ async function providerDetails(p) {
   }
   const allow = [];
   heading("Tool permissions", content);
+  content.append(el("p", "Review the complete compatible tool set once. Your selection stays pinned across restarts and updates. New or incompatible tools require another review; newly included tools default to approval-required X unless already classified."));
   for (const tool of tools.tools || []) {
     const label = el("label", undefined, { class: "field" }),
       check = el("input", undefined, { type: "checkbox", value: tool.name });
@@ -653,6 +654,22 @@ async function providerDetails(p) {
   content.append(
     controls(
       permission,
+      action("Select all compatible", () => {
+        for(const box of allow) box.checked = true;
+      }),
+      action("Preview full provider access", async () => {
+        if (!tools.tools?.length) {
+          throw Error("No validated tools are cached. Use Test connection first, then reopen these details.");
+        }
+        if (!confirm(`Review all ${tools.tools.length} schema-valid tools from ${p.id}? This includes tools that may write files or execute commands. The unvalidated ${tools.rejected?.length || 0} tools are excluded. Operator approval is required.`)) return;
+        const proposal = await api("/api/extensions/provider-review", {
+          name: p.id,
+          enabled: true,
+          all_tools: true,
+        });
+        details("Full tool-access proposal", pre(proposal),
+          action("Open approvals", () => { $("detail").close(); return navigate("approvals"); }));
+      }),
       action("Preview allowlist", async () => {
         const proposal = await api("/api/extensions/provider-review", {
           name: p.id,
@@ -670,9 +687,15 @@ async function providerDetails(p) {
         );
       }),
       action(p.enabled ? "Preview disable" : "Preview enable", async () => {
+        const firstEnableAll = !p.enabled && !(reviewed.tools || []).length;
+        if (firstEnableAll && !tools.tools?.length) {
+          throw Error("Test the provider first so BridgeDev can review its full validated tool inventory.");
+        }
+        if (firstEnableAll && !confirm(`Enable all ${tools.tools.length} validated tools from ${p.id}? Tools may modify data or execute commands; independent approval is still required.`)) return;
         const proposal = await api("/api/extensions/provider-review", {
           name: p.id,
           enabled: !p.enabled,
+          ...(firstEnableAll ? { all_tools: true } : {}),
         });
         details(
           "Lifecycle proposal",

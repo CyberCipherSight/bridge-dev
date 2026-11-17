@@ -58,9 +58,28 @@ export async function extensionCli(args:string[],json=false,verbose=false):Promi
  }else if(action==="enable"&&group==="mcp"){
   if(!target)throw new Error("Provider name required");
   const active=(await store.list()).find(e=>e.key===key);if(flag("--scope")&&active&&active.scope!==scope)throw new Error("MCP_SCOPE_OVERRIDDEN: provider review targets the effective scope; remove the project override to review the user definition");
-  const tools=(flag("--tools")||"").split(",").filter(Boolean),permission=flag("--permission")||"X";
+  // Omitted --tools means the complete validated snapshot from the installed
+  // provider, not an accidentally empty allowlist. Pin those exact names:
+  // future/upgraded tools require another independent review.
+  const selected=flag("--tools"),permission=flag("--permission")||"X";
   if(!["R","W","X"].includes(permission))throw new Error("--permission must be R, W or X; R is an operator assertion, never inferred from descriptions");
-  result=await store.proposeProvider(target,{enabled:true,expose:"allowlist",tools,tool_permissions:Object.fromEntries(tools.map(name=>[name,permission as "R"|"W"|"X"])),...(args.includes("--allow-private-network")?{allow_private_network:true}:{})});
+  if(selected===undefined && args.includes("--permission") && permission!=="X")throw new Error("MCP_FULL_TOOL_PERMISSION_REQUIRES_EXPLICIT_TOOLS: broad R/W classification cannot be inferred from untrusted provider metadata");
+  let tools:string[];
+  if(selected!==undefined){
+   tools=selected.split(",").filter(Boolean);
+   if(!tools.length)throw new Error("MCP_EMPTY_TOOL_SELECTION: omit --tools to review all validated tools");
+  }else{
+   const inspected=await manager.testProvider(target);
+   tools=inspected.tools.map(tool=>tool.name);
+   if(!tools.length)throw new Error("MCP_NO_VALIDATED_TOOLS: cannot enable an empty provider");
+   if(inspected.status.advertised_tool_count!==tools.length)
+    console.error(`Provider ${target}: ${tools.length} schema-valid tools selected; ${inspected.status.rejected_tool_count} unsupported tools remain unavailable.`);
+  }
+  const current=manager.getServerConfig(target);
+  if(!current)throw new Error("PROVIDER_NOT_FOUND");
+  result=await store.proposeProvider(target,{enabled:true,expose:"allowlist",tools,
+    tool_permissions:Object.fromEntries(tools.map(name=>[name,selected===undefined?(current.tool_permissions?.[name]||"X"):permission as "R"|"W"|"X"])),
+    ...(args.includes("--allow-private-network")?{allow_private_network:true}:{})});
  }else if(action==="disable"&&group==="mcp"){const active=(await store.list()).find(e=>e.key===key);if(flag("--scope")&&active&&active.scope!==scope)throw new Error("MCP_SCOPE_OVERRIDDEN");result=await store.proposeProvider(target!,{enabled:false});}
  else if(action==="remove"&&group==="mcp"&&!(await store.list()).some(e=>e.key===key))result=await store.proposeProviderRemoval(target!);
  else if(["remove","disable","enable","update"].includes(action)){

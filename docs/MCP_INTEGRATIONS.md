@@ -46,6 +46,9 @@ bridge-dev mcp list
 bridge-dev mcp info example
 bridge-dev mcp test example
 bridge-dev mcp tools example
+bridge-dev mcp enable example  # Review every currently schema-valid tool (X by default)
+bridge-dev approve <enable-proposal-id>
+# To grant only a subset instead:
 bridge-dev mcp enable example --tools read_item,list_items --permission R
 bridge-dev approve <enable-proposal-id>
 bridge-dev mcp disable example
@@ -59,6 +62,14 @@ bridge-dev approve <remove-proposal-id>
 `--allow-private-network` is an explicit enable-review option. Tool permissions are
 operator assertions: R read-only, W mutation, X execution. A discovered read-only
 annotation grants nothing. There is currently no automatic annotation-based grant.
+With `mcp enable <provider>` and no `--tools`, the local CLI discovers and pins
+**every schema-valid tool** from that reviewed provider (instead of enabling an
+empty set). New names default to approval-gated X, and previously reviewed tool
+classes remain intact. The dashboard's first-enable and full-access review offer
+the same complete, pinned selection after an operator-triggered connection test.
+Every tool remains gated by the existing policy and explicit operator approval;
+rejected schemas and tools introduced by later provider upgrades require new
+review. The approved selection persists across service restarts and updates.
 Changed commands, arguments, source versions or hashes generate a new proposal;
 updates reset enabling and require fresh review. `update --all` returns individual
 proposals. Sources installed outside BridgeDev need provenance before automatic

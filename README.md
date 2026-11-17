@@ -137,6 +137,9 @@ the [installer update procedure](docs/INSTALL.md#updating) instead.
   permitted commands, and work with Git repositories.
 - **One MCP endpoint** — keep multiple tools and reviewed upstream providers
   behind one authenticated connection.
+- **Persistent full-provider access** — review all compatible tools once,
+  preserve their approved names across restarts, and keep unreviewed execution
+  and incompatible schemas blocked.
 - **Discoverable extensions** — browse a catalog, inspect providers and skills,
   and review changes before enabling executable integrations.
 - **Local operations dashboard** — see active providers, custom resources,
@@ -154,9 +157,11 @@ local skills without publishing host-specific paths in the portable catalog.
 
 For example, a reviewed [Reverse Engineer Anything (REA)](docs/integrations/REA.md)
 installation has been observed as connected. REA 6.9.0 advertised 255 tool
-definitions; BridgeDev accepted 190 schemas, rejected 65, and exposes **only
-three approved read-only guidance tools**. Those have passed independent MCP
-invocation tests. **This does not yet prove that an EXE or APK has been
+definitions; BridgeDev accepted 190 schemas and rejected 65. The previously
+installed configuration exposed just three read-only guidance tools, but an
+isolated gateway successfully exposed and tested **all 190 compatible tools**.
+Production expansion still requires independent operator approval. **This does
+not yet prove that an EXE or APK has been
 decompiled**: binary analysis requires a reviewed engine/session and explicit
 tool permissions. Details and a reproducible test are in the [REA guide](docs/integrations/REA.md).
 

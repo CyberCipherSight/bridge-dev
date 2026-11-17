@@ -292,6 +292,15 @@ try {
     "name",
   ]);
   await evaluate('document.getElementById("detail").close()');
+  await evaluate('navigate("extensions")');
+  await evaluate('[...screen.querySelectorAll("button")].find(b=>b.textContent==="Inspect").click()');
+  await waitFor(() => evaluate('document.getElementById("detail").open'));
+  await evaluate('globalThis.confirm=()=>true');
+  await evaluate('[...document.querySelectorAll("#detail button")].find(b=>b.textContent==="Preview full provider access").click()');
+  await waitFor(() => evaluate('document.getElementById("detail-title").textContent==="Full tool-access proposal"'));
+  assert.deepEqual(await evaluate('Object.keys(lastProviderReview).sort()'),["all_tools","enabled","name"]);
+  assert.equal(await evaluate('lastProviderReview.all_tools'),true);
+  await evaluate('document.getElementById("detail").close()');
   await evaluate('navigate("marketplace")');
   assert.ok((await evaluate('marketData.catalog_total'))>=100);
   await evaluate('document.getElementById("marketplace-search").value="Reverse Engineer Anything";document.getElementById("marketplace-filter").requestSubmit()');

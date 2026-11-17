@@ -52,6 +52,25 @@ Other accepted schemas are not execution approval. Native analysis requiring
 additional engines remains unverified. ChatGPT account-side discovery/invocation
 requires the operator's reconnect and account acceptance.
 
+**Full compatible tool exposure:** `bridge-dev mcp enable rea` now prepares an
+operator-review proposal for all 190 currently schema-valid REA 6.9.0 tools.
+It pins the exact names, preserves previously reviewed R/W/X classes, and assigns
+X (approval required) to newly selected names. Once independently approved,
+the selection persists across restarts. A provider version with new tools needs
+a fresh review. All 65 rejected REA tools contained untrusted regex `pattern`
+constraints; the gateway does not disable validation to expose them.
+
+An optional real REA test without installation or production changes is:
+
+```sh
+node scripts/test-rea-full-provider.mjs /absolute/reviewed/rea-agents/scripts/rea.mjs
+```
+
+It independently verified 190 proxies plus 52 native tools, a successful
+guidance call, and denial of an unapproved executable-class tool. It does not
+establish that all optional binary-analysis engines are installed or that the
+ChatGPT account has refreshed and accepted the full new inventory.
+
 The same isolated gateway also discovered 15 tools from the official filesystem
 server 2.3.0, invoked its single approved `read_text_file`, and denied its
 unapproved write tool. Both providers were disabled and their processes cleaned

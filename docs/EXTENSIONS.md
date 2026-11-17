@@ -10,6 +10,13 @@ bridge-dev pack list|info|add|update|remove
 
 `add <source>` discovers and previews. With several candidates, use `--select
 skill:name,instructions:name,pack:name`. Each change returns an exact proposal ID.
+For MCP servers, registering a definition never starts it. The first operator
+`mcp enable <id>` now proposes the **complete schema-valid tool inventory** by
+default; `--tools name1,name2` deliberately narrows it. Accepted names are pinned
+to the approved snapshot, persisted across restarts, and new names await review.
+Unclassified tools use the conservative X permission class; neither an MCP
+annotation nor an imported schema can silently grant R/W privileges. Operator
+confirmation and managed-system policy rules are unchanged.
 `bridge-dev approve <id>` applies it through the authenticated operator API. The CLI
 reads `.env` in its current directory; use the same directory/configuration as serve.
 `--json` returns structured data, and `--verbose` shows complete file previews.

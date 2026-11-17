@@ -52,10 +52,20 @@ export function extensionRouter(manager:McpUpstreamManager):Router{
  router.post("/api/extensions/action",run(req=>{const body=z.object({action:z.enum(["remove","update","enable","disable"]),key:z.string().min(1).max(128),scope}).strict().parse(req.body);return store.proposeAction(body.action,body.key,body.scope);}));
  router.post("/api/extensions/provider-remove",run(req=>store.proposeProviderRemoval(z.object({name:z.string().min(1).max(128)}).strict().parse(req.body).name)));
  router.post("/api/extensions/provider-review",run(req=>{
-  const body=z.object({name:z.string(),enabled:z.boolean(),tools:z.array(z.string().max(256)).max(256).optional(),permission:z.enum(["R","W","X"]).optional(),allow_private_network:z.boolean().optional()}).strict().parse(req.body);
+  const body=z.object({name:z.string(),enabled:z.boolean(),all_tools:z.boolean().optional(),tools:z.array(z.string().max(256)).max(256).optional(),permission:z.enum(["R","W","X"]).optional(),allow_private_network:z.boolean().optional()}).strict().parse(req.body);
   const current=manager.getServerConfig(body.name);if(!current)throw new Error("PROVIDER_NOT_FOUND");
+  if(body.all_tools&&body.tools!==undefined)throw new Error("MCP_TOOL_SELECTION_CONFLICT");
+  if(body.all_tools&&body.permission&&body.permission!=="X")throw new Error("MCP_FULL_TOOL_PERMISSION_REQUIRES_INDIVIDUAL_REVIEW");
   const changes:Partial<typeof current>={enabled:body.enabled};
-  if(body.tools!==undefined){changes.expose="allowlist";changes.tools=body.tools;changes.tool_permissions=Object.fromEntries(body.tools.map(name=>[name,body.permission||current.tool_permissions?.[name]||"X"]));}
+  if(body.all_tools){
+   // Only include names from the schema-checked, operator-tested cache. Never
+   // treat 255 advertised names as 255 validated and executable methods.
+   const accepted=manager.inspectCachedTools(body.name).map(tool=>tool.name);
+   if(!accepted.length)throw new Error("MCP_PROVIDER_TEST_REQUIRED: test the reviewed provider before granting all validated tools");
+   changes.expose="allowlist";
+   changes.tools=accepted;
+   changes.tool_permissions=Object.fromEntries(accepted.map(name=>[name,current.tool_permissions?.[name]||"X"]));
+  }else if(body.tools!==undefined){changes.expose="allowlist";changes.tools=body.tools;changes.tool_permissions=Object.fromEntries(body.tools.map(name=>[name,body.permission||current.tool_permissions?.[name]||"X"]));}
   if(body.allow_private_network!==undefined)changes.allow_private_network=body.allow_private_network;
   return store.proposeProvider(body.name,changes);
  }));

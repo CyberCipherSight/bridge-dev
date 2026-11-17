@@ -33,6 +33,21 @@ try{
  assert.equal((await api('/api/extensions/apply',{id:proposed.id},token)).status,401);
  cli(['approve',proposed.id]);assert.equal((await api('/api/extensions')).body.data.providers[0].enabled,false);
  const tested=cli(['mcp','test','fixture']);assert.ok(tested.tools.some(tool=>tool.name==='echo'));
+ // Without --tools the operator receives every schema-validated tool, not an
+ // empty set. The exact reviewed names and X classes persist in the registry.
+ const full=cli(['mcp','enable','fixture']);
+ assert.deepEqual([...full.provider.tools].sort(),['echo','environment']);
+ assert.equal(full.provider.expose,'allowlist');
+ assert.deepEqual(full.provider.tool_permissions,{echo:'X',environment:'X'});
+ cli(['approve',full.id]);
+ assert.equal((await api('/api/extensions')).body.data.providers[0].enabled,true);
+ assert.deepEqual((await api('/api/upstream')).body.config.servers.find(s=>s.id==='fixture').tools.sort(),['echo','environment']);
+ await stop();await start();
+ const persisted=(await api('/api/upstream')).body.config.servers.find(s=>s.id==='fixture');
+ assert.equal(persisted.enabled,true,'Full set must survive gateway restart');
+ assert.deepEqual([...persisted.tools].sort(),['echo','environment']);
+ assert.deepEqual(persisted.tool_permissions,{echo:'X',environment:'X'});
+ const fullDisable=cli(['mcp','disable','fixture']);cli(['approve',fullDisable.id]);
  const enable=cli(['mcp','enable','fixture','--tools','echo','--permission','R']);assert.equal(enable.provider.command,process.execPath);cli(['approve',enable.id]);
  client=new Client({name:'independent-web-client',version:'1'},{capabilities:{}});
  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`),{requestInit:{headers:{Authorization:'Bearer '+token}}}));
@@ -71,6 +86,8 @@ try{
  const proposedRaw=JSON.parse(await fs.readFile(path.join(root,'state/extensions/proposals',preserved.body.data.id+'.json'),'utf8')).provider;
  assert.deepEqual(proposedRaw.tools,['echo']);assert.deepEqual(proposedRaw.tool_permissions,{echo:'R'});assert.equal(proposedRaw.allow_private_network,true);assert.equal(proposedRaw.bearer_token_env_var,reference.bearer_token_env_var);assert.deepEqual(proposedRaw.headers,reference.headers);assert.equal(proposedRaw.url,reference.url);
  const reselected=await api('/api/extensions/provider-review',{name:reference.id,enabled:false,tools:['echo']});assert.equal(reselected.status,200);assert.equal(reselected.body.data.provider.tool_permissions.echo,'R');
+ const allUncached=await api('/api/extensions/provider-review',{name:reference.id,enabled:true,all_tools:true});
+ assert.equal(allUncached.status,400,'Full-tool review must not trust an untested provider or its advertised names');
  assert.ok(!logs.includes(token)&&!logs.includes(admin),'Credentials leaked to gateway logs');
  console.log('Extension interfaces: CLI preview/approval, authenticated admin, independent HTTP client, allowlisted proxy, skill load, model request, self-approval refusal, disable, restart and removal PASS');
 }finally{await client?.close().catch(()=>{});await stop();await fs.rm(root,{recursive:true,force:true});}
