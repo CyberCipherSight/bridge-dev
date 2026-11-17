@@ -85,13 +85,27 @@ button in Overview, without polling. Once a new release has passed CI, the
 operator can update explicitly; the running MCP connection is not interrupted
 merely because main changed.
 
-On managed Linux installations, run `bridge-dev update --check` to compare the
-installed release with the current GitHub `main` SHA. `bridge-dev update` calls
-the existing exact-SHA, CI-verified, rollback-protected systemd updater. It does
-**not** run `git pull`, modify dirty source checkouts or silently rotate tokens.
-`--no-wait` returns a durable job ID. A healthy STANDARD gateway is required:
-revoke YOLO locally before updating and reactivate it deliberately afterwards.
-For a portable installation without systemd, use its documented installer.
+On managed Linux installations, `bridge-dev update --check` compares the
+installed release against GitHub `main`. **`bridge-dev update` is one command
+from either STANDARD or an already authorized YOLO session**:
+
+- STANDARD: stage the exact SHA, verify CI and artifact integrity, perform the
+  guarded update and wait for independent acceptance.
+- YOLO: from a private interactive Linux terminal, temporarily revoke the
+  signed lease, run the same guarded STANDARD acceptance, then offer a **fresh
+  independent local operator confirmation** to restore the previously active
+  indefinite YOLO authorization. No manual `mode standard` or `mode yolo`
+  commands are necessary. Reauthorization is never silent.
+- If cutover fails, rolls back, or the job is still pending, BridgeDev **stays
+  STANDARD** for inspection; it never reactivates root during unfinished
+  acceptance. A user declining reauthorization leaves the successful release
+  in STANDARD.
+- `--no-wait` returns the durable job ID only from STANDARD. It is refused
+  with YOLO because an asynchronous job has no safe restoration point.
+
+The updater does **not** run `git pull`, modify dirty source checkouts,
+rotate tokens, recreate services or weaken Policy Gateway. Portable installs
+without a managed Linux service retain their separate installer workflow.
 
 From an **interactive local terminal**, `bridge-dev token rotate admin` or
 `bridge-dev token rotate mcp` creates a private timestamped mode-0600 backup
