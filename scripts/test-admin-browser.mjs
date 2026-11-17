@@ -398,6 +398,16 @@ try {
     evaluate('document.getElementById("admin-credential").value === ""'),
   );
   assert.equal(await evaluate("localStorage.length+sessionStorage.length"), 0);
+  // After a token rotation or logout, the dashboard must show a recovery
+  // path rather than a blank page with 'Invalid admin token'.
+  await command("Page.reload");
+  await waitFor(() => evaluate(
+    'document.getElementById("screen").textContent.includes("Local Admin session needs pairing")',
+  ));
+  assert.equal(await evaluate('document.getElementById("title").textContent'), "Access & Security");
+  assert.equal(await evaluate('document.getElementById("security-panel").hidden'), false);
+  assert.match(await evaluate("screen.textContent"), /bridge-dev dashboard/);
+  assert.doesNotMatch(await evaluate('document.getElementById("notice").textContent'), /Invalid admin token/);
 
   // A paired browser has no long-lived bearer token in JS/storage and can
   // reload without manually logging in again. Pairing is signed, single-use.
