@@ -947,7 +947,14 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
   }
   // --no-wait has no safe reauthorization point: it cannot be used with an
   // existing YOLO lease. Never silently re-enable root during acceptance.
-  const initialMode=getActiveMode().mode;
+  const signedBefore=getActiveMode();
+  const initialMode=signedBefore.mode;
+  // A time-limited YOLO lease must never be silently widened to the
+  // indefinite --until-off lease. This one-command flow currently supports
+  // only the independently authorized until-off lease.
+  if (initialMode==="YOLO" &&
+      signedBefore.detail!=="verified signed lease; until manually disabled")
+    throw Error("UPDATE_TIMED_YOLO_UNSUPPORTED: use an explicit operator mode transition; refusing to extend a timed privilege lease");
   if (args.includes("--no-wait")) {
     if (initialMode!=="STANDARD")
       throw Error("UPDATE_DETACHED_REQUIRES_STANDARD: switch manually, or use plain bridge-dev update to handle YOLO safely");
@@ -958,7 +965,7 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
   console.log("Updating from verified GitHub main release "+sha+"; no git pull, credential rotation, or background watcher.");
   await coordinatedVerifiedUpdate({
     mode:()=>getActiveMode().mode,
-    interactive:Boolean(process.stdin.isTTY && process.stdout.isTTY && process.getuid?.()!==0),
+    interactive:Boolean(!json && process.stdin.isTTY && process.stdout.isTTY && process.getuid?.()!==0),
     revokeYolo:async()=>runOperator(["mode","standard"]),
     deployAndWait:async()=>{
       await serviceCli(["service","update",sha],json);
