@@ -204,12 +204,12 @@ try {
   const unattended=makeUpdate("YOLO",{interactive:false});
   await assert.rejects(coordinatedVerifiedUpdate(unattended.actions),/LOCAL_TTY_REQUIRED/);
   assert.deepEqual(unattended.events,[]);
-  const unsafe=makeUpdate("STRICT");
-  await assert.rejects(coordinatedVerifiedUpdate(unsafe.actions),/MODE_UNVERIFIED/);
-  assert.deepEqual(unsafe.events,[]);
-  const denied=makeUpdate("YOLO",{revokeYolo:async()=>false});
-  await assert.rejects(coordinatedVerifiedUpdate(denied.actions),/REVOCATION_UNVERIFIED/);
-  assert.equal(denied.events.filter(x=>x==="deploy").length,0);
+  const strictUpdate=makeUpdate("STRICT");
+  await assert.rejects(coordinatedVerifiedUpdate(strictUpdate.actions),/MODE_UNVERIFIED/);
+  assert.deepEqual(strictUpdate.events,[]);
+  const deniedRevocation=makeUpdate("YOLO",{revokeYolo:async()=>false});
+  await assert.rejects(coordinatedVerifiedUpdate(deniedRevocation.actions),/REVOCATION_UNVERIFIED/);
+  assert.equal(deniedRevocation.events.filter(x=>x==="deploy").length,0);
   const rolledBack=makeUpdate("YOLO",{deployAndWait:async()=>false});
   await assert.rejects(coordinatedVerifiedUpdate(rolledBack.actions),/ACCEPTANCE_UNVERIFIED/);
   assert.equal(rolledBack.final(),"STANDARD");
