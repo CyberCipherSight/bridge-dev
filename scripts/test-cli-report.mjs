@@ -15,8 +15,10 @@ try {
   assert.ok(file.startsWith(base));
   assert.equal(writeCliEvent({command:"update",status:"SUCCESS",release:"a".repeat(40),
     detail:"reason synthetic-mcp-token-12345678 https://example.org/?token=secret"}),true);
-  assert.equal(fs.statSync(path.dirname(file)).mode&0o777,0o700);
-  assert.equal(fs.statSync(file).mode&0o777,0o600);
+  if(process.platform!=="win32"){
+    assert.equal(fs.statSync(path.dirname(file)).mode&0o777,0o700);
+    assert.equal(fs.statSync(file).mode&0o777,0o600);
+  }
   const record=JSON.parse(fs.readFileSync(file,"utf8").trim());
   assert.equal(record.command,"update");
   assert.equal(record.status,"SUCCESS");
@@ -27,13 +29,15 @@ try {
   assert.equal(cliResultLine("service","status",{active:true,current:"a".repeat(40),rollback_available:true}),
     "Service: running · aaaaaaa · rollback available");
   assert.equal(cliErrorMessage(Error("failure\nother line")),"failure other line");
-  fs.chmodSync(file,0o644);
-  assert.equal(writeCliEvent({command:"update",status:"FAILED"}),false);
-  fs.chmodSync(file,0o600);
-  fs.renameSync(file,file+".saved");
-  fs.symlinkSync(file+".saved",file);
-  assert.equal(writeCliEvent({command:"update",status:"FAILED"}),false);
-  fs.unlinkSync(file);
+  if(process.platform!=="win32"){
+    fs.chmodSync(file,0o644);
+    assert.equal(writeCliEvent({command:"update",status:"FAILED"}),false);
+    fs.chmodSync(file,0o600);
+    fs.renameSync(file,file+".saved");
+    fs.symlinkSync(file+".saved",file);
+    assert.equal(writeCliEvent({command:"update",status:"FAILED"}),false);
+    fs.unlinkSync(file);
+  }
   assert.equal(writeCliEvent({command:"doctor",status:"OK"}),true);
   fs.writeFileSync(file,"x".repeat(2*1024*1024+5),{mode:0o600});
   assert.equal(writeCliEvent({command:"doctor",status:"OK"}),true);
