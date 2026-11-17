@@ -70,8 +70,10 @@ through the operator's authenticated `gh` CLI and reports whether the installed
 release differs, without modifying the service.
 `bridge-dev update` is the **single-command operator workflow**, accepting
 either STANDARD or an independently signed, active YOLO lease. In YOLO from
-an interactive local terminal it invokes the root-owned operator script to
-revoke authorization to STANDARD before calling the existing
+an interactive local terminal it **first verifies GitHub CI and stages
+the exact artifact** while authorization remains unchanged. Only when that
+preflight succeeds does it invoke the root-owned operator script to revoke
+authorization to STANDARD, then call the existing
 `service update <exact-sha>` flow. That flow validates exact-commit CI,
 artifact integrity, native and reviewed optional tool inventories, protected
 rollback and acceptance. Only after terminal SUCCESS, installed SHA equality,
