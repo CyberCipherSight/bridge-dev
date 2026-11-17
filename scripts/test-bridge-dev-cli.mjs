@@ -225,6 +225,8 @@ try {
   await assert.rejects(coordinatedVerifiedUpdate(refused.actions),/YOLO_NOT_RESTORED/);
   assert.equal(refused.final(),"STANDARD");
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/UPDATE_DETACHED_REQUIRES_STANDARD/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/UPDATE_TIMED_YOLO_UNSUPPORTED/);
+  assert.match(fs.readFileSync("src/cli.ts","utf8"),/interactive:Boolean\(!json/);
   assert.match(fs.readFileSync("src/cli.ts","utf8"),/coordinatedVerifiedUpdate/);
   // A remote/non-TTY client cannot mint or launch an Admin pairing link.
   // No long-lived bearer or signed link may appear in stdout/stderr.
