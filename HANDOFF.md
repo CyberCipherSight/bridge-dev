@@ -23,7 +23,7 @@ See `docs/POLICY_GATEWAY.md` for the model and `README.md` for repository layout
 
 - STRICT: operator-signed approval for writes/exec; sudo forbidden.
 - STANDARD: scoped development with signed approval for privileged or destructive requests.
-- YOLO: short-lived independently operator-signed escalation lease; never persistent.
+- YOLO: independently operator-signed host-root lease, indefinite until manually disabled by default or explicitly time-limited; never silently authorized or reauthorized.
 
 A rollout of the BridgeDev **name** into live service paths or public connector names requires its own verified rollout and rollback procedure; preserve the legacy fallback until then.
 

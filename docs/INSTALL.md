@@ -29,11 +29,13 @@ Download and inspect the scripts before executing them if you prefer. Both insta
 
 The installer creates separate random MCP/Admin tokens, tries ports 3000/3001 and selects different available loopback ports if occupied. Credentials remain in private configuration; they are **not printed in installer logs**. Config is preserved when reinstalling. The prior app directory is retained as `app.previous-<timestamp>` for recovery.
 
-Start BridgeDev in the foreground using `bridge-dev start`. Run `bridge-dev access` in a second interactive terminal to display the local Admin UI URL, Admin token and MCP URL. The access command deliberately refuses to print secrets into redirected output or via a remote tool call.
+**Portable mode:** `bridge-dev start` runs the gateway in the foreground. To obtain the Admin pairing and MCP connection URL while it is running, execute `bridge-dev access` from another private local terminal. It refuses to print secrets into redirected output or through a remote tool call. On Linux, `bridge-dev dashboard` can open a one-use local browser pairing link once the gateway is running. Windows/macOS should use `bridge-dev access`.
+
+**Optional managed Linux user service:** follow [Persistent service](PERSISTENT_SERVICE.md) for one-time reviewed installation. After it is installed, `bridge-dev start` starts the service without occupying the terminal, and `bridge-dev dashboard` opens the authenticated local UI from the **same terminal**. The standard portable installer never silently creates or enables this service or installs a root controller.
 
 The launcher directory may need to be on your shell PATH; the installer prints its full path and the relevant PATH command. Windows PowerShell installation adds the launcher directory to your user PATH for new terminals.
 
-### Daily use and simple checks
+### Everyday use and simple checks
 
 ```sh
 bridge-dev start           # Foreground portable gateway (Ctrl+C to stop)
@@ -42,7 +44,7 @@ bridge-dev doctor          # Diagnose installation and connectivity
 bridge-dev help            # Supported commands on your installed version
 ```
 
-On Linux, an **optional** persistent user service supports `bridge-dev service install`, `service status`, `service logs`, `service update <sha-or-tag>` and `service rollback`. See [Persistent service](PERSISTENT_SERVICE.md). It is not the same as installing the separately reviewed [host-root controller](HOST_CONTROLLER.md).
+On Linux, an **optional** persistent user service supports `bridge-dev service install`, `service status`, `service logs`, `service rollback`, and the single guarded `bridge-dev update` command. `bridge-dev update` checks exact-commit CI, stages the release, coordinates temporary STANDARD acceptance even when an existing YOLO lease is active, and offers independently confirmed reauthorization only after success. See [Persistent service](PERSISTENT_SERVICE.md). This service is distinct from the separately reviewed [host-root controller](HOST_CONTROLLER.md).
 
 For ChatGPT, provide the HTTPS MCP URL from `bridge-dev access`; with a legacy token-in-path URL select **Authentication: None**. Keep the token and any private Admin URL out of logs, screenshots and GitHub issues. The dashboard stays local. Portable `system_context` may legitimately be unconfigured.
 
