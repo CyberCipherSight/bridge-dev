@@ -6,7 +6,8 @@ import {readPortableMode} from "./lib/portable-mode.js";
  */
 
 import "dotenv/config";
-import {startConfiguredService,installService,controlService} from "./lib/service-manager.js";
+import {startConfiguredService,installService,controlService,queueServiceOperation,jobResult} from "./lib/service-manager.js";
+import {snapshotUpdateLease,assertSameUpdateLease} from "./lib/update-lease.js";
 import {offerPersistentBootService} from "./lib/yolo-autostart.js";
 import {serviceCli} from "./lib/service-cli.js";
 import {stageVerifiedGithubRelease} from "./lib/service-release.js";
@@ -946,9 +947,9 @@ function cmdLogin(args: string[] = []) {
 
 async function cmdUpdate(args: string[], json: boolean,verbose=false): Promise<void> {
   if (process.platform !== "linux") throw Error("UPDATE_SERVICE_UNSUPPORTED: managed Linux service required");
-  if (args.some(x => !["--check", "--no-wait"].includes(x)) ||
+  if (args.some(x => !["--check", "--no-wait", "--standard-window"].includes(x)) ||
       (args.includes("--check") && args.includes("--no-wait")))
-    throw Error("Usage: bridge-dev update [--check | --no-wait]");
+    throw Error("Usage: bridge-dev update [--check | --no-wait | --standard-window]");
   const status=await userServiceStatus();
   if (!status.installed) throw Error("UPDATE_SERVICE_NOT_INSTALLED: use bridge-dev service install");
   // Resolve main once; the existing updater independently validates exact SHA,
@@ -979,7 +980,7 @@ async function cmdUpdate(args: string[], json: boolean,verbose=false): Promise<v
   // A time-limited YOLO lease must never be silently widened to the
   // indefinite --until-off lease. This one-command flow currently supports
   // only the independently authorized until-off lease.
-  if (initialMode==="YOLO" &&
+  if (initialMode==="YOLO" && args.includes("--standard-window") &&
       signedBefore.detail!=="verified signed lease; until manually disabled")
     throw Error("UPDATE_TIMED_YOLO_UNSUPPORTED: use an explicit operator mode transition; refusing to extend a timed privilege lease");
   // Fail before revoking an active YOLO lease when main has not passed CI,
@@ -992,6 +993,35 @@ async function cmdUpdate(args: string[], json: boolean,verbose=false): Promise<v
     if(verbose)console.log("Preflight: verifying GitHub CI and staging the exact release before revoking YOLO.");
     const staged=await stageVerifiedGithubRelease(sha,serviceRoot());
     if(staged.commit!==sha) throw Error("UPDATE_PREFLIGHT_SHA_MISMATCH");
+  }
+  // Signed YOLO stays active throughout the verified shadow transaction.
+  // This path never calls the mode operator, requests a new lease, or executes
+  // privileged-denial fixtures against the live gateway.
+  if(initialMode==="YOLO"&&!args.includes("--standard-window")){
+    const lease=snapshotUpdateLease();
+    if(lease.mode!=="YOLO")throw Error("UPDATE_YOLO_LEASE_UNVERIFIED");
+    if(!json)console.log(`Updating BridgeDev → ${sha.slice(0,7)} (isolated shadow)…`);
+    const queued=await queueServiceOperation("update",sha,serviceRoot(),undefined,{shadowLease:lease});
+    const id=String(queued.job_id||"");
+    if(!/^[0-9a-f-]{36}$/.test(id))throw Error("UPDATE_SHADOW_JOB_RECEIPT_INVALID");
+    if(queued.existing_job)throw Error("UPDATE_SHADOW_JOB_ALREADY_PENDING: "+id);
+    const end=Date.now()+190000;
+    let result:any;
+    while(Date.now()<end){
+      result=await jobResult(serviceRoot(),id);
+      if(["SUCCESS","ROLLED_BACK","FAILED"].includes(result.status))break;
+      await new Promise(resolve=>setTimeout(resolve,300));
+    }
+    if(result?.status!=="SUCCESS")
+      throw Error(`UPDATE_SHADOW_${result?.status||"UNFINISHED"}: job ${id}; ${String(result?.error||"inspect tracked journal").slice(0,170)}`);
+    assertSameUpdateLease(lease,snapshotUpdateLease());
+    const installed=await userServiceStatus();
+    if(installed.active!==true||installed.current!==sha||installed.pointer_consistent!==true)
+      throw Error("UPDATE_SHADOW_POST_CUTOVER_UNVERIFIED: inspect job "+id);
+    writeCliEvent({command:"update",status:"SUCCESS",release:sha,job_id:id,detail:"lease unchanged"});
+    if(json)console.log(JSON.stringify({ok:true,updated:true,commit:sha,mode:"YOLO",job_id:id}));
+    else console.log(`BridgeDev updated: ${sha.slice(0,7)} · YOLO lease unchanged.`);
+    return;
   }
   if (args.includes("--no-wait")) {
     if (initialMode!=="STANDARD")
