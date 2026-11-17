@@ -111,6 +111,11 @@ share connection URLs, tokens, pairing links, or screenshots containing them.
 | View or authorize workspaces | `bridge-dev workspace list` |
 | See all commands | `bridge-dev help` |
 
+CLI output stays brief by default. Use `--verbose` for diagnostics or `--json`
+for structured results. Private on-demand CLI events are kept under
+`~/.local/state/bridge-dev/private-cli/events.jsonl`; tracked update jobs retain
+their full systemd journals. Operator authorization prompts remain visible.
+
 ### One-command verified update (managed Linux)
 
 ```sh

@@ -3,8 +3,9 @@ import {spawnSync} from "node:child_process";
 import {randomUUID} from "node:crypto";
 import fs from "node:fs";
 import {cliOption} from "./cli-arguments.js";
+import {cliResultLine,writeCliEvent} from "./cli-report.js";
 
-export async function controllerCli(args:string[],json:boolean):Promise<boolean>{
+export async function controllerCli(args:string[],json:boolean,verbose=false):Promise<boolean>{
   if(!["operator","deploy"].includes(args[0]))return false;
   if(!hostControllerAvailable())throw new Error("HOST_CONTROLLER_UNAVAILABLE: optional managed Linux operator component is not installed");
   const flag=(name:string)=>cliOption(args,name);
@@ -31,5 +32,8 @@ export async function controllerCli(args:string[],json:boolean):Promise<boolean>
     result=await controllerCall(action==="verify"?"status":action,id?[id]:[]);
     if(action==="verify"&&result.status!=="SUCCESS")throw new Error("Job has not passed acceptance: "+result.status);
   }else throw new Error("Usage: bridge-dev operator status|yolo|exec|logs|cleanup; bridge-dev deploy plan|start|status|logs|verify|rollback|cleanup");
-  console.log(JSON.stringify(json?{ok:true,data:result}:result,null,json?undefined:2));return true;
+  writeCliEvent({command:group+" "+action,status:typeof result?.status==="string"?result.status:"SUCCESS",
+    ...(typeof result?.job_id==="string"?{job_id:result.job_id}:{}),
+  });
+  console.log(json?JSON.stringify({ok:true,data:result}):verbose?JSON.stringify(result,null,2):cliResultLine(group,action,result||{}));return true;
 }

@@ -8,6 +8,27 @@ errors until the same loopback listener is healthy again.
 
 ## Install and inspect
 
+### Compact terminal output and diagnostics
+
+Routine `bridge-dev` commands print a concise status line by default. For
+`bridge-dev update`, the console shows the target release and verified outcome;
+any warning or failure appears as a short diagnostic line. The independent
+**Full System / YOLO authorization prompt remains visible** and is never
+automatically confirmed, redirected, or suppressed by the updater.
+
+Detailed deployment acceptance receipts stay in the existing transient
+systemd update job journal (`bridge-dev service logs --job <uuid>`). Additional
+on-demand CLI events are appended to
+`~/.local/state/bridge-dev/private-cli/events.jsonl` (private directory `0700`,
+file `0600`, bounded on-demand rotation). The CLI log records status, release,
+job ID, and a sanitized brief reason, **not** tokens, connection URLs, full MCP
+payloads, or the privileged operator's terminal output. AI agents may inspect
+the file and the linked job journal when diagnosing failures.
+
+Use `--verbose` for expanded human output and `--json` for stable machine-
+readable results. Explicit `bridge-dev service logs` and `bridge-dev access`
+remain detail-oriented by design. No logging service or watcher is installed.
+
 Build a clean checkout first, or run from an installed, marked release. Keep the
 existing user-owned mode-0600 environment file with independent MCP/admin tokens.
 Installation references that file; it never embeds or copies its credentials.

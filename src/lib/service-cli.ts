@@ -17,9 +17,12 @@ import {
   jobResult,
 } from "./service-manager.js";
 import { stageVerifiedGithubRelease } from "./service-release.js";
+import {cliErrorMessage,cliResultLine, writeCliEvent} from "./cli-report.js";
 export async function serviceCli(
   args: string[],
   json = false,
+  verbose = false,
+  quiet = false,
 ): Promise<boolean> {
   if (args[0] !== "service") return false;
   if (args.includes("--crash-test"))
@@ -140,12 +143,23 @@ export async function serviceCli(
       process.exitCode = 1;
     }
   }
-  console.log(
-    JSON.stringify(
-      json ? { ok: !process.exitCode, data: result } : result,
-      null,
-      json ? undefined : 2,
-    ),
-  );
+  const status = typeof result?.status === "string" ? result.status :
+    process.exitCode ? "FAILED" : "SUCCESS";
+  writeCliEvent({command:"service "+action,status,level:process.exitCode ? "error":"info",
+    ...(typeof result?.job_id === "string" ? {job_id:result.job_id}:{}),
+    ...(typeof result?.commit === "string" ? {release:result.commit}:{}),
+    ...(typeof result?.current === "string" ? {release:result.current}:{}),
+    ...(typeof result?.error === "string" ? {detail:result.error}:{}),
+  });
+  if (quiet) return true;
+  if (json) console.log(JSON.stringify({ok:!process.exitCode,data:result}));
+  else if (verbose) console.log(JSON.stringify(result,null,2));
+  else {
+    console.log(cliResultLine("service",action,result||{}));
+    const warnings=Array.isArray(result?.warnings)?result.warnings:
+      typeof result?.warning==="string"?[result.warning]:[];
+    for(const warning of warnings.slice(0,3))console.warn("Warning: "+cliErrorMessage(warning));
+    if(process.exitCode&&result?.note)console.warn("Warning: "+cliErrorMessage(result.note));
+  }
   return true;
 }

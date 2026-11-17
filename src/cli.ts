@@ -21,6 +21,7 @@ import {verifyAuditFile,redactAudit} from "./lib/hash-audit.js";
 import {extensionCli,operatorApi} from "./lib/extension-cli.js";
 import {controllerCli} from "./lib/controller-cli.js";
 import {parseCliArguments} from "./lib/cli-arguments.js";
+import {cliErrorMessage,cliLogFile,writeCliEvent} from "./lib/cli-report.js";
 import {hostControllerAvailable} from "./lib/host-controller.js";
 import {mintAdminPairCode} from "./admin/local-session.js";
 import {tailscaleEndpoint,enableTailscaleFunnel} from "./lib/tailscale.js";
@@ -194,7 +195,7 @@ function getMappedProjects(): string[] {
   }
 }
 
-async function cmdStatus(json = false) {
+async function cmdStatus(json = false,verbose = false) {
   const service = await userServiceStatus();
   const unit = getServiceUnit();
   const health = await fetchHealth(Number(process.env.PORT || 3000));
@@ -243,6 +244,17 @@ async function cmdStatus(json = false) {
       endpoint: localEndpoint,
       public_url: funnel || null,
     }));
+    return;
+  }
+
+  if(!verbose){
+    const state=health||service.active?"running":service.installed?"stopped":"offline";
+    const release=service.current ? " · "+service.current.slice(0,7) : "";
+    console.log(`BridgeDev: ${state} · ${modeInfo.mode}${release}`);
+    if(service.active&&!health)console.warn("Warning: MCP health unverified; check credentials/port with bridge-dev doctor --verbose.");
+    if(service.installed&&!service.pointer_consistent)console.warn("Warning: release pointer mismatch; inspect bridge-dev doctor --verbose.");
+    writeCliEvent({command:"status",status:service.active&&!health?"RUNNING_UNVERIFIED":state,
+      release:service.current||undefined});
     return;
   }
 
@@ -732,7 +744,7 @@ async function cmdRestart() {
   }
 }
 
-async function cmdDoctor(json = false) {
+async function cmdDoctor(json = false,verbose = false) {
   const service = await userServiceStatus();
   const checks: Array<{ label: string; status: "OK" | "UNVERIFIED" | "INFO"; detail: string }> = [];
   const add = (label: string, status: "OK" | "UNVERIFIED" | "INFO", detail: string) => checks.push({ label, status, detail });
@@ -777,8 +789,10 @@ async function cmdDoctor(json = false) {
       console.log(JSON.stringify({ ok: !checks.some(c => c.status === "UNVERIFIED"), checks }));
       return;
     }
-    console.log("BridgeDev doctor");
-    for (const check of checks) console.log("[" + check.status + "] " + check.label.padEnd(22) + ": " + check.detail);
+    if(verbose){console.log("BridgeDev doctor");for (const check of checks) console.log("[" + check.status + "] " + check.label.padEnd(22) + ": " + check.detail);}
+    else{console.log(`BridgeDev doctor: ${checks.filter(c=>c.status==="OK").length} OK, ${checks.filter(c=>c.status==="UNVERIFIED").length} warnings`);
+      for(const c of checks.filter(c=>c.status==="UNVERIFIED"))console.warn(`Warning: ${c.label}: ${c.detail}`);}
+    writeCliEvent({command:"doctor",status:checks.some(c=>c.status==="UNVERIFIED")?"WARN":"OK",detail:checks.filter(c=>c.status==="UNVERIFIED").map(c=>c.label).join(", ")});
     if (checks.some(check => check.status === "UNVERIFIED")) process.exitCode = 1;
     return;
   }
@@ -827,14 +841,14 @@ async function cmdDoctor(json = false) {
     console.log(JSON.stringify({ ok: !checks.some(c => c.status === "UNVERIFIED"), checks }));
     return;
   }
-  console.log("BridgeDev doctor");
-  for (const c of checks) {
-    console.log("[" + c.status + "] " + c.label.padEnd(22) + ": " + c.detail);
-  }
+  if(verbose){console.log("BridgeDev doctor");for (const c of checks)console.log("["+c.status+"] "+c.label.padEnd(22)+": "+c.detail);}
+  else{console.log(`BridgeDev doctor: ${checks.filter(c=>c.status==="OK").length} OK, ${checks.filter(c=>c.status==="UNVERIFIED").length} warnings`);
+    for(const c of checks.filter(c=>c.status==="UNVERIFIED"))console.warn(`Warning: ${c.label}: ${c.detail}`);}
+  writeCliEvent({command:"doctor",status:checks.some(c=>c.status==="UNVERIFIED")?"WARN":"OK",detail:checks.filter(c=>c.status==="UNVERIFIED").map(c=>c.label).join(", ")});
   if (checks.some(c => c.status === "UNVERIFIED")) process.exitCode = 1;
 }
 
-async function cmdSetup(json = false) {
+async function cmdSetup(json = false,verbose = false) {
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
   const nodeOk = nodeMajor >= 20;
 
@@ -880,6 +894,13 @@ async function cmdSetup(json = false) {
     return;
   }
 
+  if(!json&&!verbose){
+    console.log(`BridgeDev setup: ${nodeOk&&wsOk?"ready":"warnings"} · service ${service.installed?service.state:"not installed"}`);
+    if(!nodeOk)console.warn("Warning: Node.js runtime is below supported version.");
+    if(!wsOk)console.warn("Warning: default workspace unavailable.");
+    writeCliEvent({command:"setup",status:nodeOk&&wsOk?"OK":"WARN"});
+    return;
+  }
   console.log("BridgeDev Guided Setup\n");
   console.log(`[${nodeOk ? "OK" : "WARN"}] Node.js runtime: ${process.version} (v20+ recommended)`);
   console.log(`[OK] Default runtime: ${getRuntimeMode()} (scoped policy)`);
@@ -923,7 +944,7 @@ function cmdLogin(args: string[] = []) {
 }
 
 
-async function cmdUpdate(args: string[], json: boolean): Promise<void> {
+async function cmdUpdate(args: string[], json: boolean,verbose=false): Promise<void> {
   if (process.platform !== "linux") throw Error("UPDATE_SERVICE_UNSUPPORTED: managed Linux service required");
   if (args.some(x => !["--check", "--no-wait"].includes(x)) ||
       (args.includes("--check") && args.includes("--no-wait")))
@@ -940,11 +961,15 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
     throw Error("UPDATE_GITHUB_UNAVAILABLE: authenticate gh locally; no source fallback");
   if (args.includes("--check")) {
     const report={installed:true,current:status.current,latest_main:sha,update_available:status.current!==sha};
-    console.log(JSON.stringify(json?{ok:true,data:report}:report,null,2));
+    writeCliEvent({command:"update --check",status:report.update_available?"AVAILABLE":"CURRENT",release:sha});
+    if(json)console.log(JSON.stringify({ok:true,data:report}));
+    else if(verbose)console.log(JSON.stringify(report,null,2));
+    else console.log(report.update_available?`Update available: ${status.current?.slice(0,7)||"unknown"} → ${sha.slice(0,7)}`:`BridgeDev is up to date (${sha.slice(0,7)})`);
     return;
   }
   if (status.current===sha) {
-    console.log("BridgeDev already at latest main: " + sha);
+    writeCliEvent({command:"update",status:"CURRENT",release:sha});
+    console.log(json?JSON.stringify({ok:true,updated:false,current:sha}):`BridgeDev is up to date (${sha.slice(0,7)})`);
     return;
   }
   // --no-wait has no safe reauthorization point: it cannot be used with an
@@ -963,24 +988,26 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
   if (initialMode==="YOLO" && !args.includes("--no-wait")) {
     if (json || !process.stdin.isTTY || !process.stdout.isTTY || process.getuid?.()===0)
       throw Error("UPDATE_YOLO_LOCAL_TTY_REQUIRED: invoke from your unprivileged private local terminal");
-    console.log("Preflight: verifying GitHub CI and staging the exact release before revoking YOLO.");
+    writeCliEvent({command:"update",status:"PREFLIGHT",release:sha});
+    if(verbose)console.log("Preflight: verifying GitHub CI and staging the exact release before revoking YOLO.");
     const staged=await stageVerifiedGithubRelease(sha,serviceRoot());
     if(staged.commit!==sha) throw Error("UPDATE_PREFLIGHT_SHA_MISMATCH");
   }
   if (args.includes("--no-wait")) {
     if (initialMode!=="STANDARD")
       throw Error("UPDATE_DETACHED_REQUIRES_STANDARD: switch manually, or use plain bridge-dev update to handle YOLO safely");
-    console.log("Queueing verified update from STANDARD; inspect the durable job ID.");
-    await serviceCli(["service","update",sha,"--no-wait"],json);
+    if(verbose)console.log("Queueing verified update from STANDARD; inspect the durable job ID.");
+    await serviceCli(["service","update",sha,"--no-wait"],json,verbose);
     return;
   }
-  console.log("Updating from verified GitHub main release "+sha+"; no git pull, credential rotation, or background watcher.");
-  await coordinatedVerifiedUpdate({
+  if(!json)console.log(`Updating BridgeDev → ${sha.slice(0,7)}…`);
+  writeCliEvent({command:"update",status:"STARTED",release:sha});
+  const result=await coordinatedVerifiedUpdate({
     mode:()=>getActiveMode().mode,
     interactive:Boolean(!json && process.stdin.isTTY && process.stdout.isTTY && process.getuid?.()!==0),
     revokeYolo:async()=>runOperator(["mode","standard"]),
     deployAndWait:async()=>{
-      await serviceCli(["service","update",sha],json);
+      await serviceCli(["service","update",sha],json,verbose,true);
       return !process.exitCode;
     },
     verifyRelease:async()=>{
@@ -989,8 +1016,15 @@ async function cmdUpdate(args: string[], json: boolean): Promise<void> {
         current.current===sha && getActiveMode().mode==="STANDARD";
     },
     restoreYoloWithLocalConfirmation:async()=>runOperator(["yolo","--until-off"]),
-    log:(message)=>console.log(message),
+    log:(message)=>{
+      writeCliEvent({command:"update",status:"PROGRESS",release:sha,detail:message});
+      if(verbose)console.log(message);
+      else if(message.includes("unsuccessful")||message.includes("unfinished"))console.warn("Warning: update incomplete; remaining in STANDARD.");
+    },
   });
+  writeCliEvent({command:"update",status:"SUCCESS",release:sha,detail:result.final_mode});
+  if(json)console.log(JSON.stringify({ok:true,updated:true,commit:sha,mode:result.final_mode}));
+  else console.log(`BridgeDev updated: ${sha.slice(0,7)} · ${result.final_mode==="YOLO"?"YOLO restored (locally confirmed)":"STANDARD active"}.`);
 }
 async function cmdToken(args: string[]): Promise<void> {
   if (args[0]==="status" && args.length===1) {
@@ -1065,7 +1099,8 @@ function cmdHelp() {
   console.log("  deploy plan|start|status|logs|verify|rollback|cleanup  Recoverable cutover jobs");
   console.log("\nFlags:");
   console.log("  --json                Output machine-readable JSON");
-  console.log("  --verbose             Show diagnostic error traces");
+  console.log("  --verbose             Show full diagnostic details (default output is brief)");
+  console.log("  CLI event log         "+cliLogFile());
   console.log("  help, --help, -h      Show this help menu\n");
   console.log("Security Modes:");
   console.log("  STANDARD     : Approved workspace files, Git, ordinary shell; no blanket sudo.");
@@ -1081,16 +1116,15 @@ async function main() {
   const interactive = (args[0] || "status").toLowerCase();
   if (!json && process.stderr.isTTY &&
       process.env.BRIDGEDEV_UPDATE_NOTICE !== "off" &&
-      ["status","access","help","--help","-h","doctor","workspace",
-       "mode","monitor","mcp","skills","instructions","pack","setup"].includes(interactive)) {
+      ["status","doctor"].includes(interactive)) {
     try {
       const hint = formatUpdateHint(await checkLatestMain(runtimeVersion().commit));
       if (hint) process.stderr.write(hint + "\n");
     } catch { /* update availability never blocks an operator command */ }
   }
-  if (await serviceCli(args, json)) return;
+  if (await serviceCli(args, json, verbose)) return;
   if (await extensionCli(args, json, verbose)) return;
-  if (await controllerCli(args, json)) return;
+  if (await controllerCli(args, json, verbose)) return;
   if (json) {
     const log = console.log, lines: string[] = [];
     console.log = (...values: unknown[]) => { lines.push(values.map(String).join(" ")); };
@@ -1104,7 +1138,7 @@ async function main() {
   switch (cmd) {
     case "":
     case "status":
-      await cmdStatus(json);
+      await cmdStatus(json,verbose);
       break;
     case "connect":
       await cmdConnect(args.includes("--show-token"));
@@ -1116,7 +1150,7 @@ async function main() {
       cmdDashboard();
       break;
     case "update":
-      await cmdUpdate(args.slice(1),json);
+      await cmdUpdate(args.slice(1),json,verbose);
       break;
     case "token":
       await cmdToken(args.slice(1));
@@ -1144,10 +1178,10 @@ async function main() {
       await cmdRestart();
       break;
     case "doctor":
-      await cmdDoctor(json);
+      await cmdDoctor(json,verbose);
       break;
     case "setup":
-      await cmdSetup(json);
+      await cmdSetup(json,verbose);
       break;
     case "login":
       cmdLogin(args.slice(1));
@@ -1156,7 +1190,8 @@ async function main() {
       if ((await userServiceStatus()).installed) {
         const expose = args.includes("--funnel") || process.env.BRIDGEDEV_FUNNEL === "true" || process.env.BRIDGEDEV_TRANSPORT === "tailscale";
         const status = await startConfiguredService(undefined, expose ? enableTailscaleFunnel : undefined);
-        console.log(JSON.stringify(status));
+        writeCliEvent({command:"start",status:status?.active?"SUCCESS":"UNKNOWN"});
+        console.log(json?JSON.stringify(status):verbose?JSON.stringify(status,null,2):"BridgeDev service started.");
         break;
       }
     case "serve":
@@ -1185,7 +1220,11 @@ async function main() {
 
 main().catch((err) => {
   const flags=parseCliArguments(process.argv.slice(2));
-  const detail=String(redactAudit(flags.verbose?(err.stack||err.message):err.message));
-  console.error(flags.json?JSON.stringify({ok:false,error:detail,code:"BRIDGEDEV_ERROR"}):`Fatal error: ${detail}`);
+  const message=cliErrorMessage(err);
+  const safeStack=String(redactAudit(err instanceof Error?err.stack||err.message:String(err)));
+  const command=flags.args.slice(0,2).filter(x=>!x.startsWith("--")).join(" ")||"status";
+  const logged=writeCliEvent({command,status:"FAILED",level:"error",code:message.split(":")[0],detail:message});
+  console.error(flags.json?JSON.stringify({ok:false,error:flags.verbose?safeStack:message,code:"BRIDGEDEV_ERROR"}):
+    flags.verbose?`Error: ${safeStack}`:`Error: ${message}${logged?` · details: ${cliLogFile()}`:""}`);
   process.exit(1);
 });

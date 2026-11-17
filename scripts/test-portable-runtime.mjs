@@ -76,8 +76,13 @@ try {
     cwd:process.cwd(),env:{...process.env},encoding:"utf8",timeout:9000
   });
   assert.equal(spawned.status,0,spawned.stderr);
-  assert.match(spawned.stdout,/portable/);
-  assert.match(spawned.stdout,/\.bridge-dev/);
+  assert.match(spawned.stdout,/^BridgeDev setup: ready · service not installed\s*$/);
+  const expanded=spawnSync(process.execPath,["dist/cli.js","setup","--verbose"],{
+    cwd:process.cwd(),env:{...process.env},encoding:"utf8",timeout:9000
+  });
+  assert.equal(expanded.status,0,expanded.stderr);
+  assert.match(expanded.stdout,/portable/);
+  assert.match(expanded.stdout,/\.bridge-dev/);
   console.log("BridgeDev portable workspace, cross-platform capabilities, Markdown and skills: PASS");
 } finally {
   for(const [key,val] of Object.entries(saved)) if(val===undefined)delete process.env[key]; else process.env[key]=val;

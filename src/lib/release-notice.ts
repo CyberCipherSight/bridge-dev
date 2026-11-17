@@ -111,8 +111,6 @@ export async function checkLatestMain(
 
 export function formatUpdateHint(result: LatestRelease | null): string | null {
   if (!result || result.update_available !== true) return null;
-  return "BridgeDev update available: installed " +
-    result.current!.slice(0, 7) + " → main " +
-    result.latest_main.slice(0, 7) +
-    ". Run 'bridge-dev update --check' then 'bridge-dev update' (requires STANDARD).";
+  return "Update available: " + result.current!.slice(0, 7) +
+    " → " + result.latest_main.slice(0, 7) + ". Run 'bridge-dev update'.";
 }

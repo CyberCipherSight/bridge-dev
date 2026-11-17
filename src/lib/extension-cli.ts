@@ -6,6 +6,7 @@ import {McpUpstreamManager} from "./mcp-upstream-manager.js";
 import {migrateUpstreamConfig} from "./mcp-upstream-migration.js";
 import {resolveUpstreamConfigPath} from "./mcp-upstream-config.js";
 import {redactAudit} from "./hash-audit.js";
+import {writeCliEvent} from "./cli-report.js";
 
 export async function operatorApi(route:string,body?:unknown):Promise<any>{
  let token=process.env.ADMIN_TOKEN||"";
@@ -73,7 +74,7 @@ export async function extensionCli(args:string[],json=false,verbose=false):Promi
    tools=inspected.tools.map(tool=>tool.name);
    if(!tools.length)throw new Error("MCP_NO_VALIDATED_TOOLS: cannot enable an empty provider");
    if(inspected.status.advertised_tool_count!==tools.length)
-    console.error(`Provider ${target}: ${tools.length} schema-valid tools selected; ${inspected.status.rejected_tool_count} unsupported tools remain unavailable.`);
+    console.warn(`Warning: ${inspected.status.rejected_tool_count} unsupported tools excluded from ${target}; ${tools.length} selected.`);
   }
   const current=manager.getServerConfig(target);
   if(!current)throw new Error("PROVIDER_NOT_FOUND");
@@ -88,8 +89,13 @@ export async function extensionCli(args:string[],json=false,verbose=false):Promi
   }else{if(!target)throw new Error("Extension name required");result=await store.proposeAction(action as any,key,scope);}
  }else throw new Error("Unsupported extension command: "+action);
  const safe=redactAudit(result);
+ const proposalId=typeof result?.id==="string"?result.id:undefined;
+ const n=Array.isArray(result)?result.length:Array.isArray(result?.tools)?result.tools.length:undefined;
+ writeCliEvent({command:group+" "+action,status:proposalId?"REVIEW_REQUIRED":"SUCCESS",
+   ...(proposalId?{job_id:proposalId}:{}),
+   ...(n!==undefined?{detail:n+" entries"}:{})});
  if(json)console.log(JSON.stringify({ok:true,data:safe}));
- else{
+ else if(verbose){
   const summarize=(value:any):any=>{
     if(Array.isArray(value))return value.map(summarize);
     if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,key==="files"&&child&&typeof child==="object"?Object.entries(child).map(([file,text])=>({path:file,bytes:Buffer.byteLength(String(text))})):summarize(child)]));
@@ -98,6 +104,23 @@ export async function extensionCli(args:string[],json=false,verbose=false):Promi
   console.log(JSON.stringify(verbose?safe:summarize(safe),null,2));
   if(result?.id)console.log("Review the exact proposal, then run: bridge-dev approve "+result.id);
   if(result?.components&&!result.id)console.log("Select components with --select kind:name[,kind:name]. No component was installed.");
+ }else{
+   if(proposalId){
+     const count=Array.isArray(result?.provider?.tools)?result.provider.tools.length:undefined;
+     console.log(`${group} ${action}: review required${count!==undefined?` · ${count} tools`:""} · proposal ${proposalId}`);
+   }else if(Array.isArray(result)){
+     const names=result.map(item=>typeof item==="string"?item:typeof item?.key==="string"?item.key:"").filter(Boolean);
+     console.log(`${group}: ${result.length} item${result.length===1?"":"s"}${names.length?` (${names.slice(0,6).join(", ")}${names.length>6?", …":""})`:""}`);
+   }else if(group==="mcp"&&action==="list"){
+     const providers=result?.registered||[];
+     console.log(`MCP: ${providers.length} registered provider${providers.length===1?"":"s"}`);
+     if(result?.registry_error)console.warn("Warning: provider registry requires inspection (bridge-dev mcp list --verbose).");
+   }else if(group==="mcp"&&(action==="tools"||action==="test")){
+     console.log(`MCP ${action}: ${Array.isArray(result?.tools)?result.tools.length:"unknown"} validated tools`);
+     const rejected=Array.isArray(result?.rejected)?result.rejected.length:Number(result?.status?.rejected_tool_count||0);
+     if(rejected>0)console.warn(`Warning: ${rejected} unsupported tools; see --verbose.`);
+   }else if(action==="approve")console.log("Approved proposal " + target);
+   else console.log(`${group} ${action}: complete${typeof result?.status==="string"?" · "+result.status:""}.`);
  }
  return true;
  }finally{await manager.shutdown();}

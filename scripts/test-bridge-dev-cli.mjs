@@ -164,7 +164,8 @@ try {
   const first=await checkLatestMain(stable,{cacheFile:updateCache,now:1000000000000,fetcher:fakeFetch});
   assert.equal(first.update_available,true);
   assert.equal(first.source,"github");
-  assert.match(formatUpdateHint(first),/bridge-dev update --check/);
+  assert.match(formatUpdateHint(first),/Run 'bridge-dev update'\./);
+  assert.doesNotMatch(formatUpdateHint(first),/requires STANDARD/);
   assert.equal(fs.statSync(updateCache).mode&0o777,process.platform==="win32"?(fs.statSync(updateCache).mode&0o777):0o600);
   const cacheHit=await checkLatestMain(stable,{cacheFile:updateCache,now:1000000001000,fetcher:()=>{throw Error("cache must not fetch");}});
   assert.equal(cacheHit.source,"cache");
